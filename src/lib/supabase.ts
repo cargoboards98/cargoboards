@@ -53,6 +53,52 @@ const supabase = supabaseConfigStatus === 'configured'
 
 export const isSupabaseConfigured = supabase !== null;
 
+function requireSupabase() {
+  if (!supabase) {
+    throw new Error('Telefonní registrace vyžaduje nakonfigurovaný Supabase projekt.');
+  }
+  return supabase;
+}
+
+export async function getVerifiedPhone(): Promise<string | null> {
+  const client = requireSupabase();
+  const { data, error } = await client.auth.getSession();
+  if (error) throw error;
+
+  const user = data.session?.user;
+  return user?.phone_confirmed_at && user.phone ? user.phone : null;
+}
+
+export function subscribeToPhoneAuthChanges(onChange: (phone: string | null) => void): () => void {
+  const client = requireSupabase();
+  const { data: { subscription } } = client.auth.onAuthStateChange((_event, session) => {
+    const user = session?.user;
+    onChange(user?.phone_confirmed_at && user.phone ? user.phone : null);
+  });
+
+  return () => subscription.unsubscribe();
+}
+
+export async function sendPhoneVerificationCode(phone: string): Promise<void> {
+  const client = requireSupabase();
+  const { error } = await client.auth.signInWithOtp({
+    phone,
+    options: { channel: 'sms', shouldCreateUser: true },
+  });
+
+  if (error) throw error;
+}
+
+export async function verifyPhoneCode(phone: string, token: string): Promise<void> {
+  const client = requireSupabase();
+  const { data, error } = await client.auth.verifyOtp({ phone, token, type: 'sms' });
+
+  if (error) throw error;
+  if (!data.session || !data.user?.phone_confirmed_at) {
+    throw new Error('Telefonní číslo se nepodařilo ověřit. Zkuste to prosím znovu.');
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

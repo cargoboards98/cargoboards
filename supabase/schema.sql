@@ -1,5 +1,4 @@
--- Prototype only: this allows any visitor to read, create, and update orders.
--- Do not use these public policies with real customer data or phone numbers.
+-- The app requires a Supabase-authenticated session created through phone OTP.
 create table if not exists public.freight_orders (
   id text primary key,
   title text not null,
@@ -20,23 +19,27 @@ create table if not exists public.freight_orders (
 
 alter table public.freight_orders enable row level security;
 
-grant select, insert, update on public.freight_orders to anon, authenticated;
+revoke all on public.freight_orders from anon;
+grant select, insert, update on public.freight_orders to authenticated;
 
 drop policy if exists "Prototype orders are publicly readable" on public.freight_orders;
-create policy "Prototype orders are publicly readable"
+drop policy if exists "Authenticated users can read orders" on public.freight_orders;
+create policy "Authenticated users can read orders"
   on public.freight_orders for select
-  to anon, authenticated
-  using (true);
+  to authenticated
+  using (auth.uid() is not null);
 
 drop policy if exists "Prototype orders are publicly insertable" on public.freight_orders;
-create policy "Prototype orders are publicly insertable"
+drop policy if exists "Authenticated users can create orders" on public.freight_orders;
+create policy "Authenticated users can create orders"
   on public.freight_orders for insert
-  to anon, authenticated
-  with check (true);
+  to authenticated
+  with check (auth.uid() is not null);
 
 drop policy if exists "Prototype orders are publicly updateable" on public.freight_orders;
-create policy "Prototype orders are publicly updateable"
+drop policy if exists "Authenticated users can update orders" on public.freight_orders;
+create policy "Authenticated users can update orders"
   on public.freight_orders for update
-  to anon, authenticated
-  using (true)
-  with check (true);
+  to authenticated
+  using (auth.uid() is not null)
+  with check (auth.uid() is not null);

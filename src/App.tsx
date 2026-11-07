@@ -25,13 +25,16 @@ import {
   Zap,
 } from 'lucide-react';
 import { FreightMap } from '@/components/FreightMap';
+import { PhoneRegistration } from '@/components/PhoneRegistration';
 import { StarRating } from '@/components/StarRating';
 import { CITIES, FUEL_RATE, SEED_ORDERS, VEHICLE_OPTIONS } from '@/data';
 import { formatCZK, formatKm, maskPhone, timeAgo, VEHICLE_STYLES } from '@/lib/utils';
 import {
   insertSupabaseOrder,
+  getVerifiedPhone,
   isSupabaseConfigured,
   loadSupabaseOrders,
+  subscribeToPhoneAuthChanges,
   supabaseConfigStatus,
   updateSupabaseOrderDistance,
 } from '@/lib/supabase';
@@ -252,6 +255,10 @@ function App() {
     () => supabaseConfigStatus === 'configured' ? 'loading' : supabaseConfigStatus,
   );
   const [databaseError, setDatabaseError] = useState('');
+  const [authStatus, setAuthStatus] = useState<'loading' | 'required' | 'verified' | 'unavailable'>(
+    () => isSupabaseConfigured ? 'loading' : 'unavailable',
+  );
+  const [authError, setAuthError] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(() => initialState?.selectedId ?? 'ord-1');
   const [vehicle, setVehicle] = useState<(typeof VEHICLE_OPTIONS)[number]>(() => initialState?.vehicle ?? 'All');
   const [mode, setMode] = useState<AccountMode>(() => initialState?.mode ?? 'PRO');
@@ -265,6 +272,29 @@ function App() {
   const [toast, setToast] = useState('');
   useEffect(() => {
     if (!isSupabaseConfigured) return;
+
+    let cancelled = false;
+    const updateAuthStatus = (phone: string | null) => {
+      if (cancelled) return;
+      setAuthStatus(phone ? 'verified' : 'required');
+      setAuthError('');
+    };
+    const unsubscribe = subscribeToPhoneAuthChanges(updateAuthStatus);
+    void getVerifiedPhone()
+      .then(updateAuthStatus)
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setAuthStatus('required');
+        setAuthError(error instanceof Error ? error.message : 'Nepodařilo se ověřit přihlášení.');
+      });
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, []);
+  useEffect(() => {
+    if (!isSupabaseConfigured || authStatus !== 'verified') return;
 
     let cancelled = false;
     void loadSupabaseOrders()
@@ -283,7 +313,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [authStatus]);
   const viewOrders = useMemo(
     () => activeView === 'mine' ? orders.filter((order) => myOrderIds.includes(order.id)) : orders,
     [activeView, myOrderIds, orders],
@@ -301,6 +331,7 @@ function App() {
     }
   }, [selectedId, activeSelectedId]);
   useEffect(() => {
+    if (authStatus !== 'verified') return;
     try {
       localStorage.setItem(APP_STATE_KEY, JSON.stringify({
         version: 1,
@@ -317,7 +348,7 @@ function App() {
     } catch (error) {
       console.error('Stav CargoBoardu se nepodařilo uložit do tohoto prohlížeče.', error);
     }
-  }, [activeSelectedId, activeView, activities, hasUnreadActivity, mode, myOrderIds, orders, sortByProfit, vehicle]);
+  }, [activeSelectedId, activeView, activities, authStatus, hasUnreadActivity, mode, myOrderIds, orders, sortByProfit, vehicle]);
   const selected = orders.find((o) => o.id === activeSelectedId) ?? null;
   const notify = (msg: string) => { setToast(msg); window.setTimeout(() => setToast(''), 2800); };
   const updateRouteDistance = useCallback((orderId: string, distance: number) => {
@@ -361,6 +392,13 @@ function App() {
     setHasUnreadActivity(true);
     notify(`Nabídka odeslána uživateli ${selected.user}: „${text}“`);
   };
+  if (authStatus !== 'verified') {
+    if (authStatus === 'loading') {
+      return <main className="flex min-h-full items-center justify-center bg-ink-950 text-sm text-ink-400">Načítám ověření účtu…</main>;
+    }
+    return <PhoneRegistration authError={authError} supabaseConfigured={isSupabaseConfigured} onAuthErrorClear={() => setAuthError('')} />;
+  }
+
   return <div className="min-h-full bg-ink-950 text-ink-200">
     <header className="flex h-[68px] items-center justify-between border-b border-ink-700/70 bg-ink-950/95 px-4 sm:px-6"><Logo /><div className="hidden items-center gap-1 rounded-xl border border-ink-700/70 bg-ink-900/60 p-1 md:flex"><button onClick={() => setActiveView('market')} className={`rounded-lg px-4 py-2 text-xs font-semibold shadow-sm ${activeView === 'market' ? 'bg-ink-700/80 text-white' : 'text-ink-500 transition hover:text-ink-200'}`}>Mapa dopravy</button><button onClick={() => setActiveView('mine')} className={`rounded-lg px-4 py-2 text-xs font-semibold shadow-sm ${activeView === 'mine' ? 'bg-ink-700/80 text-white' : 'text-ink-500 transition hover:text-ink-200'}`}>Moje zakázky</button></div><div className="flex items-center gap-2 sm:gap-3"><div className="relative hidden sm:block"><button aria-label="Oznámení" aria-expanded={notificationsOpen} onClick={() => { setNotificationsOpen((open) => !open); setHasUnreadActivity(false); }} className="relative rounded-lg p-2 text-ink-500 hover:bg-ink-800 hover:text-ink-200"><Bell size={17} />{hasUnreadActivity && <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-accent-400" />}</button>{notificationsOpen && <div className="absolute right-0 top-full z-40 mt-2 w-72 rounded-xl border border-ink-700 bg-ink-900 p-3 shadow-xl"><h2 className="mb-2 text-xs font-bold text-white">Oznámení</h2>{activities.length ? <ul className="space-y-2">{activities.slice(0, 5).map((activity, index) => <li key={`${activity}-${index}`} className="rounded-lg bg-ink-800/70 px-3 py-2 text-xs leading-5 text-ink-300">{activity}</li>)}</ul> : <p className="py-3 text-xs text-ink-500">Zatím nemáte žádná oznámení.</p>}</div>}</div><div className="hidden h-5 w-px bg-ink-700 sm:block" /><button onClick={() => setMode(mode === 'PRO' ? 'FREE' : 'PRO')} className={`flex items-center gap-2 rounded-xl border px-2.5 py-2 text-xs font-bold transition sm:px-3 ${mode === 'PRO' ? 'border-accent-500/40 bg-accent-500/10 text-accent-300 hover:bg-accent-500/20' : 'border-ink-600 bg-ink-800 text-ink-400 hover:text-ink-200'}`}><span className={`h-1.5 w-1.5 rounded-full ${mode === 'PRO' ? 'bg-success-400 shadow-[0_0_8px_#22c55e]' : 'bg-ink-500'}`} /><span>{mode === 'PRO' ? 'PRO účet' : 'FREE účet'}</span><ChevronDown size={13} /></button><div className="flex h-8 w-8 items-center justify-center rounded-full bg-ink-700 text-xs font-bold text-ink-300">JD</div></div></header>
     <nav aria-label="Hlavní navigace" className="flex gap-2 border-b border-ink-700/70 bg-ink-950 px-4 py-2 md:hidden"><button onClick={() => setActiveView('market')} className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold ${activeView === 'market' ? 'bg-ink-700/80 text-white' : 'text-ink-500'}`}>Mapa dopravy</button><button onClick={() => setActiveView('mine')} className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold ${activeView === 'mine' ? 'bg-ink-700/80 text-white' : 'text-ink-500'}`}>Moje zakázky</button></nav>
