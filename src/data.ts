@@ -1,7 +1,7 @@
 import type { City, Order, VehicleType } from './types';
 
 export const CITIES: Record<string, City> = {
-  Kdyně: { name: 'Kdyně', lat: 49.3910021, lng: 13.0392655 },
+  Kdyně: { name: 'Kdyně', lat: 49.4147, lng: 13.1856 },
   Domažlice: { name: 'Domažlice', lat: 49.4405, lng: 12.9297 },
   Klatovy: { name: 'Klatovy', lat: 49.3995, lng: 13.2914 },
   Plzeň: { name: 'Plzeň', lat: 49.7384, lng: 13.3776 },

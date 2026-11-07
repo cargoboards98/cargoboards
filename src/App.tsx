@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import {
   ArrowDownUp,
@@ -20,24 +20,15 @@ import {
   Plus,
   Send,
   ShieldCheck,
+  Sparkles,
   Truck,
   X,
   Zap,
 } from 'lucide-react';
 import { FreightMap } from '@/components/FreightMap';
-import { PhoneRegistration } from '@/components/PhoneRegistration';
 import { StarRating } from '@/components/StarRating';
-import { CITIES, FUEL_RATE, SEED_ORDERS, VEHICLE_OPTIONS } from '@/data';
+import { FUEL_RATE, SEED_ORDERS, VEHICLE_OPTIONS } from '@/data';
 import { formatCZK, formatKm, maskPhone, timeAgo, VEHICLE_STYLES } from '@/lib/utils';
-import {
-  insertSupabaseOrder,
-  getVerifiedPhone,
-  isSupabaseConfigured,
-  loadSupabaseOrders,
-  subscribeToPhoneAuthChanges,
-  supabaseConfigStatus,
-  updateSupabaseOrderDistance,
-} from '@/lib/supabase';
 import type { AccountMode, Order } from '@/types';
 
 const VEHICLE_LABELS: Record<string, string> = {
@@ -46,90 +37,6 @@ const VEHICLE_LABELS: Record<string, string> = {
   Van: 'Dodávka',
   Trailer: 'Přívěs',
 };
-
-const APP_STATE_KEY = 'cargoboard-app-state-v1';
-
-type SavedAppState = {
-  orders: Order[];
-  selectedId: string | null;
-  vehicle: (typeof VEHICLE_OPTIONS)[number];
-  mode: AccountMode;
-  activeView: 'market' | 'mine';
-  myOrderIds: string[];
-  sortByProfit: boolean;
-  hasUnreadActivity: boolean;
-  activities: string[];
-};
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-function isOrder(value: unknown): value is Order {
-  return isRecord(value)
-    && typeof value.id === 'string'
-    && typeof value.title === 'string'
-    && typeof value.from === 'string'
-    && typeof value.to === 'string'
-    && isRecord(value.fromCoords)
-    && typeof value.fromCoords.lat === 'number'
-    && typeof value.fromCoords.lng === 'number'
-    && isRecord(value.toCoords)
-    && typeof value.toCoords.lat === 'number'
-    && typeof value.toCoords.lng === 'number'
-    && typeof value.price === 'number'
-    && typeof value.distance === 'number'
-    && (value.vehicle === 'Combi' || value.vehicle === 'Van' || value.vehicle === 'Trailer')
-    && typeof value.user === 'string'
-    && typeof value.rating === 'number'
-    && typeof value.reviews === 'number'
-    && typeof value.phone === 'string'
-    && typeof value.description === 'string'
-    && typeof value.createdAt === 'number';
-}
-
-function loadSavedState(): SavedAppState | null {
-  try {
-    const raw = localStorage.getItem(APP_STATE_KEY);
-    if (!raw) return null;
-
-    const parsed: unknown = JSON.parse(raw);
-    if (
-      !isRecord(parsed)
-      || parsed.version !== 1
-      || !Array.isArray(parsed.orders)
-      || !parsed.orders.every(isOrder)
-      || (parsed.selectedId !== null && typeof parsed.selectedId !== 'string')
-      || !(VEHICLE_OPTIONS as readonly unknown[]).includes(parsed.vehicle)
-      || (parsed.mode !== 'PRO' && parsed.mode !== 'FREE')
-      || (parsed.activeView !== 'market' && parsed.activeView !== 'mine')
-      || !Array.isArray(parsed.myOrderIds)
-      || !parsed.myOrderIds.every((id) => typeof id === 'string')
-      || typeof parsed.sortByProfit !== 'boolean'
-      || typeof parsed.hasUnreadActivity !== 'boolean'
-      || !Array.isArray(parsed.activities)
-      || !parsed.activities.every((activity) => typeof activity === 'string')
-    ) {
-      console.warn('Uložená data CargoBoardu mají neplatný formát; načítám výchozí stav.');
-      return null;
-    }
-
-    return {
-      orders: parsed.orders,
-      selectedId: parsed.selectedId,
-      vehicle: parsed.vehicle as (typeof VEHICLE_OPTIONS)[number],
-      mode: parsed.mode,
-      activeView: parsed.activeView,
-      myOrderIds: parsed.myOrderIds,
-      sortByProfit: parsed.sortByProfit,
-      hasUnreadActivity: parsed.hasUnreadActivity,
-      activities: parsed.activities,
-    };
-  } catch (error) {
-    console.warn('Uložená data CargoBoardu se nepodařilo načíst.', error);
-    return null;
-  }
-}
 
 function Logo() {
   return (
@@ -175,43 +82,22 @@ function OrderCard({ order, selected, onClick }: { order: Order; selected: boole
   );
 }
 
-const normalizeCity = (value: string) => value.trim().replace(/\s+/g, ' ');
-
-const findCity = (value: string) => {
-  const normalized = normalizeCity(value).toLowerCase();
-  const match = Object.entries(CITIES).find(([cityName]) => cityName.toLowerCase() === normalized);
-  return match ? match[1] : null;
-};
-
-function AddOrderModal({ onClose, onAdd }: { onClose: () => void; onAdd: (order: Order) => Promise<void> }) {
+function AddOrderModal({ onClose, onAdd }: { onClose: () => void; onAdd: (order: Order) => void }) {
   const [form, setForm] = useState({ title: '', from: '', to: '', price: '', phone: '' });
   const [error, setError] = useState('');
-  const [saving, setSaving] = useState(false);
   const update = (key: keyof typeof form, value: string) => setForm((prev) => ({ ...prev, [key]: value }));
-  const submit = async (e: FormEvent) => {
+  const submit = (e: FormEvent) => {
     e.preventDefault();
-    const title = form.title.trim();
-    const from = normalizeCity(form.from);
-    const to = normalizeCity(form.to);
-    const fromCity = findCity(from);
-    const toCity = findCity(to);
-    const price = Number(form.price);
-
-    if (!title || !fromCity || !toCity || !Number.isFinite(price) || price <= 0 || !form.phone.trim()) {
+    const from = form.from.trim();
+    const to = form.to.trim();
+    const fromCity = from in requireCities ? requireCities[from] : null;
+    const toCity = to in requireCities ? requireCities[to] : null;
+    if (!form.title || !fromCity || !toCity || Number(form.price) <= 0 || !form.phone) {
       setError('Vyplňte všechna pole a použijte podporované město (např. Plzeň nebo Praha).');
       return;
     }
-
     const distance = Math.max(24, Math.round(Math.hypot((fromCity.lat - toCity.lat) * 111, (fromCity.lng - toCity.lng) * 72) * 1.2));
-    setSaving(true);
-    setError('');
-    try {
-      await onAdd({ id: `ord-${Date.now()}`, title, from: fromCity.name, to: toCity.name, fromCoords: fromCity, toCoords: toCity, price, distance, vehicle: 'Van', user: 'Nový zákazník', rating: 5, reviews: 0, phone: form.phone.trim(), description: 'Nově vystavená poptávka po dopravě. Pro přesné detaily nakládky kontaktujte zákazníka.', createdAt: Date.now() });
-    } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : 'Zakázku se nepodařilo uložit.');
-    } finally {
-      setSaving(false);
-    }
+    onAdd({ id: `ord-${Date.now()}`, title: form.title, from, to, fromCoords: fromCity, toCoords: toCity, price: Number(form.price), distance, vehicle: 'Van', user: 'Nový zákazník', rating: 5, reviews: 0, phone: form.phone, description: 'Nově vystavená poptávka po dopravě. Pro přesné detaily nakládky kontaktujte zákazníka.', createdAt: Date.now() });
   };
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -222,12 +108,16 @@ function AddOrderModal({ onClose, onAdd }: { onClose: () => void; onAdd: (order:
           <div className="grid grid-cols-2 gap-3"><label className="block"><span className="mb-1.5 block text-xs font-medium text-ink-300">Město nakládky</span><input value={form.from} onChange={(e) => update('from', e.target.value)} placeholder="např. Kdyně" className="field" /></label><label className="block"><span className="mb-1.5 block text-xs font-medium text-ink-300">Město vyložení</span><input value={form.to} onChange={(e) => update('to', e.target.value)} placeholder="např. Praha" className="field" /></label></div>
           <div className="grid grid-cols-2 gap-3"><label className="block"><span className="mb-1.5 block text-xs font-medium text-ink-300">Nabídnutá cena (Kč)</span><input type="number" min="1" value={form.price} onChange={(e) => update('price', e.target.value)} placeholder="1 500" className="field" /></label><label className="block"><span className="mb-1.5 block text-xs font-medium text-ink-300">Váš telefon</span><input type="tel" value={form.phone} onChange={(e) => update('phone', e.target.value)} placeholder="+420 777 123 456" className="field" /></label></div>
           {error && <p className="rounded-lg bg-danger-500/10 px-3 py-2 text-xs text-danger-400">{error}</p>}
-          <button type="submit" disabled={saving} className="flex w-full items-center justify-center gap-2 rounded-xl bg-accent-500 py-3 text-sm font-bold text-white transition hover:bg-accent-600 disabled:cursor-wait disabled:opacity-60"><Plus size={17} /> {saving ? 'Ukládám…' : 'Zveřejnit zakázku'}</button>
+          <button type="submit" className="flex w-full items-center justify-center gap-2 rounded-xl bg-accent-500 py-3 text-sm font-bold text-white transition hover:bg-accent-600"><Plus size={17} /> Zveřejnit zakázku</button>
         </form>
       </div>
     </div>
   );
 }
+
+const requireCities: Record<string, { name: string; lat: number; lng: number }> = {
+  Kdyně: { name: 'Kdyně', lat: 49.4147, lng: 13.1856 }, Domažlice: { name: 'Domažlice', lat: 49.4405, lng: 12.9297 }, Klatovy: { name: 'Klatovy', lat: 49.3995, lng: 13.2914 }, Plzeň: { name: 'Plzeň', lat: 49.7384, lng: 13.3776 }, Praha: { name: 'Praha', lat: 50.0755, lng: 14.4378 }, Beroun: { name: 'Beroun', lat: 49.9644, lng: 14.0656 }, Rokycany: { name: 'Rokycany', lat: 49.7444, lng: 13.5928 }, Stod: { name: 'Stod', lat: 49.6219, lng: 13.1653 },
+};
 
 function DetailPanel({ order, mode, onUpgrade, onMessage }: { order: Order | null; mode: AccountMode; onUpgrade: () => void; onMessage: (text: string) => void }) {
   const [message, setMessage] = useState('');
@@ -247,171 +137,22 @@ function DetailPanel({ order, mode, onUpgrade, onMessage }: { order: Order | nul
 }
 
 function App() {
-  const [initialState] = useState(loadSavedState);
-  const [orders, setOrders] = useState<Order[]>(() => (
-    isSupabaseConfigured ? [] : initialState?.orders ?? SEED_ORDERS
-  ));
-  const [databaseStatus, setDatabaseStatus] = useState<'missing' | 'incomplete' | 'loading' | 'connected' | 'error'>(
-    () => supabaseConfigStatus === 'configured' ? 'loading' : supabaseConfigStatus,
-  );
-  const [databaseError, setDatabaseError] = useState('');
-  const [authStatus, setAuthStatus] = useState<'loading' | 'required' | 'verified' | 'unavailable'>(
-    () => isSupabaseConfigured ? 'loading' : 'unavailable',
-  );
-  const [authError, setAuthError] = useState('');
-  const [selectedId, setSelectedId] = useState<string | null>(() => initialState?.selectedId ?? 'ord-1');
-  const [vehicle, setVehicle] = useState<(typeof VEHICLE_OPTIONS)[number]>(() => initialState?.vehicle ?? 'All');
-  const [mode, setMode] = useState<AccountMode>(() => initialState?.mode ?? 'PRO');
-  const [activeView, setActiveView] = useState<'market' | 'mine'>(() => initialState?.activeView ?? 'market');
-  const [myOrderIds, setMyOrderIds] = useState<string[]>(() => initialState?.myOrderIds ?? []);
-  const [sortByProfit, setSortByProfit] = useState(() => initialState?.sortByProfit ?? false);
-  const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const [hasUnreadActivity, setHasUnreadActivity] = useState(() => initialState?.hasUnreadActivity ?? false);
-  const [activities, setActivities] = useState<string[]>(() => initialState?.activities ?? []);
+  const [orders, setOrders] = useState<Order[]>(SEED_ORDERS);
+  const [selectedId, setSelectedId] = useState<string | null>('ord-1');
+  const [vehicle, setVehicle] = useState<(typeof VEHICLE_OPTIONS)[number]>('All');
+  const [mode, setMode] = useState<AccountMode>('PRO');
   const [modalOpen, setModalOpen] = useState(false);
   const [toast, setToast] = useState('');
-  useEffect(() => {
-    if (!isSupabaseConfigured) return;
-
-    let cancelled = false;
-    const updateAuthStatus = (phone: string | null) => {
-      if (cancelled) return;
-      setAuthStatus(phone ? 'verified' : 'required');
-      setAuthError('');
-    };
-    const unsubscribe = subscribeToPhoneAuthChanges(updateAuthStatus);
-    void getVerifiedPhone()
-      .then(updateAuthStatus)
-      .catch((error: unknown) => {
-        if (cancelled) return;
-        setAuthStatus('required');
-        setAuthError(error instanceof Error ? error.message : 'Nepodařilo se ověřit přihlášení.');
-      });
-
-    return () => {
-      cancelled = true;
-      unsubscribe();
-    };
-  }, []);
-  useEffect(() => {
-    if (!isSupabaseConfigured || authStatus !== 'verified') return;
-
-    let cancelled = false;
-    void loadSupabaseOrders()
-      .then((databaseOrders) => {
-        if (cancelled || databaseOrders === null) return;
-        setOrders(databaseOrders);
-        setDatabaseStatus('connected');
-        setDatabaseError('');
-      })
-      .catch((error: unknown) => {
-        if (cancelled) return;
-        setDatabaseStatus('error');
-        setDatabaseError(error instanceof Error ? error.message : 'Nepodařilo se načíst zakázky.');
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [authStatus]);
-  const viewOrders = useMemo(
-    () => activeView === 'mine' ? orders.filter((order) => myOrderIds.includes(order.id)) : orders,
-    [activeView, myOrderIds, orders],
-  );
-  const filtered = useMemo(() => {
-    const matches = vehicle === 'All' ? viewOrders : viewOrders.filter((order) => order.vehicle === vehicle);
-    return sortByProfit
-      ? [...matches].sort((a, b) => (b.price - b.distance * FUEL_RATE) - (a.price - a.distance * FUEL_RATE))
-      : matches;
-  }, [sortByProfit, vehicle, viewOrders]);
-  const activeSelectedId = filtered.some((o) => o.id === selectedId) ? selectedId : filtered[0]?.id ?? null;
-  useEffect(() => {
-    if (selectedId !== activeSelectedId) {
-      setSelectedId(activeSelectedId);
-    }
-  }, [selectedId, activeSelectedId]);
-  useEffect(() => {
-    if (authStatus !== 'verified') return;
-    try {
-      localStorage.setItem(APP_STATE_KEY, JSON.stringify({
-        version: 1,
-        orders,
-        selectedId: activeSelectedId,
-        vehicle,
-        mode,
-        activeView,
-        myOrderIds,
-        sortByProfit,
-        hasUnreadActivity,
-        activities,
-      }));
-    } catch (error) {
-      console.error('Stav CargoBoardu se nepodařilo uložit do tohoto prohlížeče.', error);
-    }
-  }, [activeSelectedId, activeView, activities, authStatus, hasUnreadActivity, mode, myOrderIds, orders, sortByProfit, vehicle]);
-  const selected = orders.find((o) => o.id === activeSelectedId) ?? null;
+  const selected = orders.find((o) => o.id === selectedId) ?? null;
+  const filtered = useMemo(() => vehicle === 'All' ? orders : orders.filter((o) => o.vehicle === vehicle), [orders, vehicle]);
   const notify = (msg: string) => { setToast(msg); window.setTimeout(() => setToast(''), 2800); };
-  const updateRouteDistance = useCallback((orderId: string, distance: number) => {
-    setOrders((prev) => prev.map((order) => (
-      order.id === orderId && order.distance !== distance ? { ...order, distance } : order
-    )));
-    void updateSupabaseOrderDistance(orderId, distance).catch((error: unknown) => {
-      setDatabaseStatus('error');
-      setDatabaseError(error instanceof Error ? error.message : 'Nepodařilo se uložit vzdálenost zakázky.');
-    });
-  }, []);
-  const addOrder = async (order: Order) => {
-    if (databaseStatus === 'loading') {
-      throw new Error('Počkejte prosím, než se načtou zakázky ze Supabase.');
-    }
-
-    let savedOrder: Order;
-    try {
-      savedOrder = await insertSupabaseOrder(order) ?? order;
-    } catch (error) {
-      setDatabaseStatus('error');
-      setDatabaseError(error instanceof Error ? error.message : 'Nepodařilo se uložit zakázku.');
-      throw error;
-    }
-    setOrders((prev) => [savedOrder, ...prev.filter((item) => item.id !== savedOrder.id)]);
-    setMyOrderIds((prev) => [savedOrder.id, ...prev]);
-    setSelectedId(order.id);
-    setActiveView('mine');
-    setModalOpen(false);
-    setActivities((prev) => [`Vystavili jste zakázku „${savedOrder.title}“.`, ...prev]);
-    setHasUnreadActivity(true);
-    if (isSupabaseConfigured) {
-      setDatabaseStatus('connected');
-      setDatabaseError('');
-    }
-    notify('Zakázka úspěšně vystavena');
-  };
-  const sendMessage = (text: string) => {
-    if (!selected) return;
-    setActivities((prev) => [`Odeslali jste nabídku uživateli ${selected.user}.`, ...prev]);
-    setHasUnreadActivity(true);
-    notify(`Nabídka odeslána uživateli ${selected.user}: „${text}“`);
-  };
-  if (authStatus !== 'verified') {
-    if (authStatus === 'loading') {
-      return <main className="flex min-h-full items-center justify-center bg-ink-950 text-sm text-ink-400">Načítám ověření účtu…</main>;
-    }
-    return <PhoneRegistration authError={authError} supabaseConfigured={isSupabaseConfigured} onAuthErrorClear={() => setAuthError('')} />;
-  }
-
+  const addOrder = (order: Order) => { setOrders((prev) => [order, ...prev]); setSelectedId(order.id); setModalOpen(false); notify('Zakázka úspěšně vystavena'); };
   return <div className="min-h-full bg-ink-950 text-ink-200">
-    <header className="flex h-[68px] items-center justify-between border-b border-ink-700/70 bg-ink-950/95 px-4 sm:px-6"><Logo /><div className="hidden items-center gap-1 rounded-xl border border-ink-700/70 bg-ink-900/60 p-1 md:flex"><button onClick={() => setActiveView('market')} className={`rounded-lg px-4 py-2 text-xs font-semibold shadow-sm ${activeView === 'market' ? 'bg-ink-700/80 text-white' : 'text-ink-500 transition hover:text-ink-200'}`}>Mapa dopravy</button><button onClick={() => setActiveView('mine')} className={`rounded-lg px-4 py-2 text-xs font-semibold shadow-sm ${activeView === 'mine' ? 'bg-ink-700/80 text-white' : 'text-ink-500 transition hover:text-ink-200'}`}>Moje zakázky</button></div><div className="flex items-center gap-2 sm:gap-3"><div className="relative hidden sm:block"><button aria-label="Oznámení" aria-expanded={notificationsOpen} onClick={() => { setNotificationsOpen((open) => !open); setHasUnreadActivity(false); }} className="relative rounded-lg p-2 text-ink-500 hover:bg-ink-800 hover:text-ink-200"><Bell size={17} />{hasUnreadActivity && <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-accent-400" />}</button>{notificationsOpen && <div className="absolute right-0 top-full z-40 mt-2 w-72 rounded-xl border border-ink-700 bg-ink-900 p-3 shadow-xl"><h2 className="mb-2 text-xs font-bold text-white">Oznámení</h2>{activities.length ? <ul className="space-y-2">{activities.slice(0, 5).map((activity, index) => <li key={`${activity}-${index}`} className="rounded-lg bg-ink-800/70 px-3 py-2 text-xs leading-5 text-ink-300">{activity}</li>)}</ul> : <p className="py-3 text-xs text-ink-500">Zatím nemáte žádná oznámení.</p>}</div>}</div><div className="hidden h-5 w-px bg-ink-700 sm:block" /><button onClick={() => setMode(mode === 'PRO' ? 'FREE' : 'PRO')} className={`flex items-center gap-2 rounded-xl border px-2.5 py-2 text-xs font-bold transition sm:px-3 ${mode === 'PRO' ? 'border-accent-500/40 bg-accent-500/10 text-accent-300 hover:bg-accent-500/20' : 'border-ink-600 bg-ink-800 text-ink-400 hover:text-ink-200'}`}><span className={`h-1.5 w-1.5 rounded-full ${mode === 'PRO' ? 'bg-success-400 shadow-[0_0_8px_#22c55e]' : 'bg-ink-500'}`} /><span>{mode === 'PRO' ? 'PRO účet' : 'FREE účet'}</span><ChevronDown size={13} /></button><div className="flex h-8 w-8 items-center justify-center rounded-full bg-ink-700 text-xs font-bold text-ink-300">JD</div></div></header>
-    <nav aria-label="Hlavní navigace" className="flex gap-2 border-b border-ink-700/70 bg-ink-950 px-4 py-2 md:hidden"><button onClick={() => setActiveView('market')} className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold ${activeView === 'market' ? 'bg-ink-700/80 text-white' : 'text-ink-500'}`}>Mapa dopravy</button><button onClick={() => setActiveView('mine')} className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold ${activeView === 'mine' ? 'bg-ink-700/80 text-white' : 'text-ink-500'}`}>Moje zakázky</button></nav>
-    {databaseStatus !== 'connected' && <div role={databaseStatus === 'error' || databaseStatus === 'incomplete' ? 'alert' : 'status'} className={`px-4 py-2 text-center text-xs ${databaseStatus === 'error' || databaseStatus === 'incomplete' ? 'bg-danger-500/10 text-danger-300' : 'bg-warning-500/10 text-warning-300'}`}>
-      {databaseStatus === 'missing' && 'Supabase není nastavený – zakázky se ukládají jen v tomto prohlížeči.'}
-      {databaseStatus === 'incomplete' && 'Supabase konfigurace je neúplná. Doplňte URL projektu i veřejný klíč do .env.local.'}
-      {databaseStatus === 'loading' && 'Připojuji se k Supabase…'}
-      {databaseStatus === 'error' && <>Chyba Supabase: {databaseError}</>}
-    </div>}
+    <header className="flex h-[68px] items-center justify-between border-b border-ink-700/70 bg-ink-950/95 px-4 sm:px-6"><Logo /><div className="hidden items-center gap-1 rounded-xl border border-ink-700/70 bg-ink-900/60 p-1 md:flex"><button className="rounded-lg bg-ink-700/80 px-4 py-2 text-xs font-semibold text-white shadow-sm">Mapa dopravy</button><button className="rounded-lg px-4 py-2 text-xs font-medium text-ink-500 transition hover:text-ink-200">Moje zakázky</button></div><div className="flex items-center gap-2 sm:gap-3"><button className="hidden rounded-lg p-2 text-ink-500 hover:bg-ink-800 hover:text-ink-200 sm:block"><Bell size={17} /></button><div className="hidden h-5 w-px bg-ink-700 sm:block" /><button onClick={() => setMode(mode === 'PRO' ? 'FREE' : 'PRO')} className={`flex items-center gap-2 rounded-xl border px-2.5 py-2 text-xs font-bold transition sm:px-3 ${mode === 'PRO' ? 'border-accent-500/40 bg-accent-500/10 text-accent-300 hover:bg-accent-500/20' : 'border-ink-600 bg-ink-800 text-ink-400 hover:text-ink-200'}`}><span className={`h-1.5 w-1.5 rounded-full ${mode === 'PRO' ? 'bg-success-400 shadow-[0_0_8px_#22c55e]' : 'bg-ink-500'}`} /><span>{mode === 'PRO' ? 'PRO účet' : 'FREE účet'}</span><ChevronDown size={13} /></button><div className="flex h-8 w-8 items-center justify-center rounded-full bg-ink-700 text-xs font-bold text-ink-300">JD</div></div></header>
     <main className="mx-auto grid min-h-[calc(100vh-68px)] max-w-[1800px] grid-cols-1 lg:grid-cols-[300px_minmax(0,1fr)_350px] xl:grid-cols-[320px_minmax(0,1fr)_380px]">
-      <aside className="flex max-h-[520px] min-h-0 flex-col border-b border-ink-700/70 bg-ink-950/70 lg:max-h-none lg:border-b-0 lg:border-r"><div className="flex items-center justify-between px-4 pb-3 pt-5"><div><h1 className="text-base font-bold text-white">{activeView === 'mine' ? 'Moje zakázky' : 'Dostupné zakázky'}</h1><p className="mt-1 text-[11px] text-ink-500"><span className="text-success-400">{filtered.length} {activeView === 'mine' ? 'vystavených' : 'aktivních'}</span> · aktualizováno právě teď</p></div><button onClick={() => setModalOpen(true)} className="flex items-center gap-1.5 rounded-lg bg-accent-500 px-3 py-2 text-xs font-bold text-white shadow-lg shadow-accent-500/10 transition hover:bg-accent-600"><Plus size={14} /> Přidat zakázku</button></div><div className="flex items-center gap-2 px-4 pb-4"><div className="relative flex-1"><ArrowDownUp size={13} className="pointer-events-none absolute left-3 top-2.5 text-ink-500" /><select value={vehicle} onChange={(e) => setVehicle(e.target.value as typeof vehicle)} className="field h-8 appearance-none pl-8 pr-7 text-[11px]"><option value="All">{VEHICLE_LABELS.All}</option><option value="Combi">{VEHICLE_LABELS.Combi}</option><option value="Van">{VEHICLE_LABELS.Van}</option><option value="Trailer">{VEHICLE_LABELS.Trailer}</option></select><ChevronDown size={13} className="pointer-events-none absolute right-2.5 top-2.5 text-ink-500" /></div><button aria-label={sortByProfit ? 'Zrušit řazení podle čistého výdělku' : 'Seřadit podle čistého výdělku'} title={sortByProfit ? 'Zrušit řazení podle čistého výdělku' : 'Seřadit podle čistého výdělku'} onClick={() => setSortByProfit((sort) => !sort)} className={`rounded-lg border p-2 transition ${sortByProfit ? 'border-accent-500/50 bg-accent-500/10 text-accent-300' : 'border-ink-700 bg-ink-900 text-ink-500 hover:text-ink-200'}`}><Gauge size={14} /></button></div><div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-4 pb-4">{filtered.map((order) => <OrderCard key={order.id} order={order} selected={order.id === selectedId} onClick={() => setSelectedId(order.id)} />)}{filtered.length === 0 && <div className="py-12 text-center text-xs text-ink-500">{activeView === 'mine' ? 'Zatím jste nevystavili žádnou zakázku.' : 'Tomuto filtru neodpovídá žádná zakázka.'}</div>}</div><div className="hidden border-t border-ink-700/70 px-4 py-3 lg:block"><div className="flex items-center gap-2 text-[10px] text-ink-500"><ShieldCheck size={14} className="text-success-500" /> Všechny zakázky ověřuje CargoBoard</div></div></aside>
-      <section className="relative min-h-[480px] bg-ink-950 p-3 sm:p-5 lg:min-h-0"><div className="mb-3 flex items-center justify-between px-1"><div><div className="flex items-center gap-2 text-xs text-ink-500"><MapPin size={13} className="text-accent-400" /> Česko · západní region</div></div><div className="flex items-center gap-3 text-[10px] text-ink-500"><span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-accent-400" /> Nakládka</span><span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-success-400" /> Vyložení</span></div></div><div className="h-[calc(100%-32px)] min-h-[430px] lg:min-h-0"><FreightMap order={selected} orders={filtered} onRouteDistance={updateRouteDistance} /></div><div className="pointer-events-none absolute bottom-8 left-8 hidden items-center gap-2 rounded-lg border border-ink-700/70 bg-ink-900/80 px-3 py-2 text-[10px] text-ink-500 backdrop-blur sm:flex">Mapa: OpenStreetMap · silniční trasy</div></section>
-      <aside className="min-h-[620px] border-t border-ink-700/70 bg-ink-950/80 lg:min-h-0 lg:border-l lg:border-t-0"><DetailPanel order={selected} mode={mode} onUpgrade={() => { setMode('PRO'); notify('Vítejte v PRO — kontakty odemčeny'); }} onMessage={sendMessage} /></aside>
+      <aside className="flex max-h-[520px] min-h-0 flex-col border-b border-ink-700/70 bg-ink-950/70 lg:max-h-none lg:border-b-0 lg:border-r"><div className="flex items-center justify-between px-4 pb-3 pt-5"><div><h1 className="text-base font-bold text-white">Dostupné zakázky</h1><p className="mt-1 text-[11px] text-ink-500"><span className="text-success-400">{filtered.length} aktivních</span> · aktualizováno právě teď</p></div><button onClick={() => setModalOpen(true)} className="flex items-center gap-1.5 rounded-lg bg-accent-500 px-3 py-2 text-xs font-bold text-white shadow-lg shadow-accent-500/10 transition hover:bg-accent-600"><Plus size={14} /> Přidat zakázku</button></div><div className="flex items-center gap-2 px-4 pb-4"><div className="relative flex-1"><ArrowDownUp size={13} className="pointer-events-none absolute left-3 top-2.5 text-ink-500" /><select value={vehicle} onChange={(e) => setVehicle(e.target.value as typeof vehicle)} className="field h-8 appearance-none pl-8 pr-7 text-[11px]"><option value="All">{VEHICLE_LABELS.All}</option><option value="Combi">{VEHICLE_LABELS.Combi}</option><option value="Van">{VEHICLE_LABELS.Van}</option><option value="Trailer">{VEHICLE_LABELS.Trailer}</option></select><ChevronDown size={13} className="pointer-events-none absolute right-2.5 top-2.5 text-ink-500" /></div><button className="rounded-lg border border-ink-700 bg-ink-900 p-2 text-ink-500 hover:text-ink-200"><Gauge size={14} /></button></div><div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-4 pb-4">{filtered.map((order) => <OrderCard key={order.id} order={order} selected={order.id === selectedId} onClick={() => setSelectedId(order.id)} />)}{filtered.length === 0 && <div className="py-12 text-center text-xs text-ink-500">Tomuto filtru neodpovídá žádná zakázka.</div>}</div><div className="hidden border-t border-ink-700/70 px-4 py-3 lg:block"><div className="flex items-center gap-2 text-[10px] text-ink-500"><ShieldCheck size={14} className="text-success-500" /> Všechny zakázky ověřuje CargoBoard</div></div></aside>
+      <section className="relative min-h-[480px] bg-ink-950 p-3 sm:p-5 lg:min-h-0"><div className="mb-3 flex items-center justify-between px-1"><div><div className="flex items-center gap-2 text-xs text-ink-500"><MapPin size={13} className="text-accent-400" /> Česko · západní region</div></div><div className="flex items-center gap-3 text-[10px] text-ink-500"><span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-accent-400" /> Nakládka</span><span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-success-400" /> Vyložení</span></div></div><div className="h-[calc(100%-32px)] min-h-[430px] lg:min-h-0"><FreightMap order={selected} orders={orders} /></div><div className="pointer-events-none absolute bottom-8 left-8 hidden items-center gap-2 rounded-lg border border-ink-700/70 bg-ink-900/80 px-3 py-2 text-[10px] text-ink-500 backdrop-blur sm:flex"><Sparkles size={13} className="text-warning-400" /> Trasy se aktualizují v reálném čase</div></section>
+      <aside className="min-h-[620px] border-t border-ink-700/70 bg-ink-950/80 lg:min-h-0 lg:border-l lg:border-t-0"><DetailPanel order={selected} mode={mode} onUpgrade={() => { setMode('PRO'); notify('Vítejte v PRO — kontakty odemčeny'); }} onMessage={(text) => notify(`Nabídka odeslána uživateli ${selected?.user}: „${text}“`)} /></aside>
     </main>
     {modalOpen && <AddOrderModal onClose={() => setModalOpen(false)} onAdd={addOrder} />}
     {toast && <div className="fixed bottom-5 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-2 rounded-xl border border-success-500/30 bg-ink-800 px-4 py-3 text-xs font-semibold text-ink-100 shadow-2xl shadow-black/40 animate-fade-in"><Check size={15} className="text-success-400" />{toast}</div>}
