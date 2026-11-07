@@ -344,7 +344,9 @@ export function AuthScreen({ initialError }: { initialError?: string | null }) {
 
             {!isSupabaseConfigured && (
               <p className="text-[11px] leading-5 text-warning-300">
-                Chybí nastavení Supabase. Doplňte VITE_SUPABASE_URL a VITE_SUPABASE_PUBLISHABLE_KEY do souboru .env.local a restartujte vývojový server.
+                {import.meta.env.PROD
+                  ? 'Tento nasazený web nemá nastavené připojení k Supabase. Ve Vercelu nastavte VITE_SUPABASE_URL a VITE_SUPABASE_PUBLISHABLE_KEY pro Production a spusťte nové nasazení.'
+                  : 'Chybí nastavení Supabase. Doplňte VITE_SUPABASE_URL a VITE_SUPABASE_PUBLISHABLE_KEY do souboru .env.local a restartujte vývojový server.'}
               </p>
             )}
 
