@@ -79,11 +79,11 @@ export function subscribeToPhoneAuthChanges(onChange: (phone: string | null) => 
   return () => subscription.unsubscribe();
 }
 
-export async function sendPhoneVerificationCode(phone: string): Promise<void> {
+export async function sendPhoneVerificationCode(phone: string, shouldCreateUser: boolean): Promise<void> {
   const client = requireSupabase();
   const { error } = await client.auth.signInWithOtp({
     phone,
-    options: { channel: 'sms', shouldCreateUser: true },
+    options: { channel: 'sms', shouldCreateUser },
   });
 
   if (error) throw error;
