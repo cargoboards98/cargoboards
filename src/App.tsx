@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { FreightMap } from '@/components/FreightMap';
 import { AuthScreen } from '@/components/AuthScreen';
+import { AdminUsersPanel } from '@/components/AdminUsersPanel';
 import { StarRating } from '@/components/StarRating';
 import { FUEL_RATE, SEED_ORDERS, VEHICLE_OPTIONS } from '@/data';
 import { formatCZK, formatKm, maskPhone, timeAgo, VEHICLE_STYLES } from '@/lib/utils';
@@ -144,6 +145,9 @@ function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(Boolean(supabase));
   const [authError, setAuthError] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [adminPanelOpen, setAdminPanelOpen] = useState(false);
+  const [adminCheckError, setAdminCheckError] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [orders, setOrders] = useState<Order[]>(SEED_ORDERS);
   const [selectedId, setSelectedId] = useState<string | null>('ord-1');
@@ -188,6 +192,41 @@ function App() {
       subscription.unsubscribe();
     };
   }, []);
+  useEffect(() => {
+    if (!supabase || !user) {
+      setIsAdmin(false);
+      setAdminPanelOpen(false);
+      setAdminCheckError(null);
+      return;
+    }
+
+    let active = true;
+    void (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .maybeSingle();
+        if (!active) return;
+        if (error) {
+          setAdminCheckError('Nepodařilo se ověřit oprávnění správce.');
+          setIsAdmin(false);
+          return;
+        }
+        setAdminCheckError(null);
+        setIsAdmin(data?.role === 'admin');
+      } catch {
+        if (!active) return;
+        setAdminCheckError('Nepodařilo se ověřit oprávnění správce.');
+        setIsAdmin(false);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [user]);
   const selected = orders.find((o) => o.id === selectedId) ?? null;
   const filtered = useMemo(() => vehicle === 'All' ? orders : orders.filter((o) => o.vehicle === vehicle), [orders, vehicle]);
   const notify = (msg: string) => { setToast(msg); window.setTimeout(() => setToast(''), 2800); };
@@ -219,12 +258,15 @@ function App() {
     || displayName[0]?.toUpperCase()
     || 'U';
   return <div className="min-h-screen bg-ink-950 text-ink-200">
-    <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-white/[0.08] bg-ink-950/90 px-3 backdrop-blur-xl sm:px-6"><Logo /><div className="hidden items-center gap-1 rounded-xl border border-white/[0.08] bg-white/[0.035] p-1 md:flex"><button className="rounded-lg bg-white/[0.08] px-4 py-2 text-xs font-semibold text-white shadow-sm">Mapa dopravy</button><button className="rounded-lg px-4 py-2 text-xs font-medium text-ink-500 transition hover:text-ink-200">Moje zakázky</button></div><div className="flex items-center gap-1.5 sm:gap-3"><button className="hidden rounded-lg p-2 text-ink-500 hover:bg-ink-800 hover:text-ink-200 sm:block"><Bell size={17} /></button><div className="hidden h-5 w-px bg-ink-700 sm:block" /><button onClick={() => setMode(mode === 'PRO' ? 'FREE' : 'PRO')} className={`flex items-center gap-1.5 rounded-xl border px-2 py-2 text-[11px] font-bold transition sm:gap-2 sm:px-3 sm:text-xs ${mode === 'PRO' ? 'border-accent-500/40 bg-accent-500/10 text-accent-300 hover:bg-accent-500/20' : 'border-ink-600 bg-ink-800 text-ink-400 hover:text-ink-200'}`}><span className={`h-1.5 w-1.5 rounded-full ${mode === 'PRO' ? 'bg-success-400 shadow-[0_0_8px_#22c55e]' : 'bg-ink-500'}`} /><span>{mode === 'PRO' ? 'PRO účet' : 'FREE účet'}</span><ChevronDown size={13} /></button><div className="flex h-8 w-8 items-center justify-center rounded-full bg-ink-700 text-xs font-bold text-ink-300" title={displayName}>{initials}</div>{user ? <button onClick={signOut} aria-label="Odhlásit se" title={`Odhlásit se jako ${displayName}`} className="rounded-lg p-2 text-ink-500 transition hover:bg-ink-800 hover:text-ink-200"><LogOut size={16} /></button> : <button onClick={() => setShowPreview(false)} className="rounded-lg px-2 py-1.5 text-xs font-semibold text-accent-400 hover:bg-ink-800">Přihlásit se</button>}</div></header>
-    <main className="mx-auto grid max-w-[1800px] grid-cols-1 lg:h-[calc(100dvh-64px)] lg:min-h-0 lg:grid-cols-[300px_minmax(0,1fr)_350px] lg:grid-rows-1 lg:overflow-hidden xl:grid-cols-[320px_minmax(0,1fr)_380px]">
+    <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-white/[0.08] bg-ink-950/90 px-3 backdrop-blur-xl sm:px-6"><Logo /><div className="hidden items-center gap-1 rounded-xl border border-white/[0.08] bg-white/[0.035] p-1 md:flex"><button className="rounded-lg bg-white/[0.08] px-4 py-2 text-xs font-semibold text-white shadow-sm">Mapa dopravy</button><button className="rounded-lg px-4 py-2 text-xs font-medium text-ink-500 transition hover:text-ink-200">Moje zakázky</button></div><div className="flex items-center gap-1.5 sm:gap-3"><button className="hidden rounded-lg p-2 text-ink-500 hover:bg-ink-800 hover:text-ink-200 sm:block"><Bell size={17} /></button><div className="hidden h-5 w-px bg-ink-700 sm:block" /><button onClick={() => setMode(mode === 'PRO' ? 'FREE' : 'PRO')} className={`flex items-center gap-1.5 rounded-xl border px-2 py-2 text-[11px] font-bold transition sm:gap-2 sm:px-3 sm:text-xs ${mode === 'PRO' ? 'border-accent-500/40 bg-accent-500/10 text-accent-300 hover:bg-accent-500/20' : 'border-ink-600 bg-ink-800 text-ink-400 hover:text-ink-200'}`}><span className={`h-1.5 w-1.5 rounded-full ${mode === 'PRO' ? 'bg-success-400 shadow-[0_0_8px_#22c55e]' : 'bg-ink-500'}`} /><span>{mode === 'PRO' ? 'PRO účet' : 'FREE účet'}</span><ChevronDown size={13} /></button><div className="flex h-8 w-8 items-center justify-center rounded-full bg-ink-700 text-xs font-bold text-ink-300" title={displayName}>{initials}</div>{isAdmin && <button onClick={() => setAdminPanelOpen((open) => !open)} className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs font-semibold transition ${adminPanelOpen ? 'border-accent-400/40 bg-accent-500/15 text-accent-200' : 'border-ink-700 text-ink-300 hover:bg-ink-800'}`}><ShieldCheck size={15} /><span className="hidden sm:inline">{adminPanelOpen ? 'Zpět do aplikace' : 'Admin'}</span></button>}{user ? <button onClick={signOut} aria-label="Odhlásit se" title={`Odhlásit se jako ${displayName}`} className="rounded-lg p-2 text-ink-500 transition hover:bg-ink-800 hover:text-ink-200"><LogOut size={16} /></button> : <button onClick={() => setShowPreview(false)} className="rounded-lg px-2 py-1.5 text-xs font-semibold text-accent-400 hover:bg-ink-800">Přihlásit se</button>}</div></header>
+    {adminCheckError && <p role="alert" className="border-b border-warning-500/20 bg-warning-500/[0.06] px-4 py-2 text-center text-xs text-warning-300">{adminCheckError}</p>}
+    {adminPanelOpen && isAdmin ? (
+      <AdminUsersPanel currentUserId={user?.id ?? ''} onNotify={notify} />
+    ) : <main className="mx-auto grid max-w-[1800px] grid-cols-1 lg:h-[calc(100dvh-64px)] lg:min-h-0 lg:grid-cols-[300px_minmax(0,1fr)_350px] lg:grid-rows-1 lg:overflow-hidden xl:grid-cols-[320px_minmax(0,1fr)_380px]">
       <aside className="order-2 flex min-h-0 flex-col border-b border-white/[0.08] bg-white/[0.015] lg:order-1 lg:h-full lg:border-b-0 lg:border-r"><div className="flex items-center justify-between gap-3 px-4 pb-3 pt-5 sm:px-5"><div><h1 className="text-base font-bold text-white">Dostupné zakázky</h1><p className="mt-1 text-[11px] text-ink-500"><span className="text-success-400">{filtered.length} aktivních</span> · aktualizováno právě teď</p></div><button onClick={() => setModalOpen(true)} className="flex shrink-0 items-center gap-1.5 rounded-xl bg-accent-500 px-3 py-2.5 text-xs font-bold text-white shadow-lg shadow-accent-500/15 transition hover:bg-accent-600"><Plus size={14} /> Přidat zakázku</button></div><div className="flex items-center gap-2 px-4 pb-4 sm:px-5"><div className="relative flex-1"><ArrowDownUp size={13} className="pointer-events-none absolute left-3 top-2.5 text-ink-500" /><select value={vehicle} onChange={(e) => setVehicle(e.target.value as typeof vehicle)} className="field h-9 appearance-none pl-8 pr-7 text-[11px]"><option value="All">{VEHICLE_LABELS.All}</option><option value="Combi">{VEHICLE_LABELS.Combi}</option><option value="Van">{VEHICLE_LABELS.Van}</option><option value="Trailer">{VEHICLE_LABELS.Trailer}</option></select><ChevronDown size={13} className="pointer-events-none absolute right-2.5 top-3 text-ink-500" /></div><button aria-label="Nastavení filtru" className="rounded-xl border border-white/[0.08] bg-white/[0.035] p-2.5 text-ink-400 transition hover:text-white"><Gauge size={14} /></button></div><div className="flex min-h-0 gap-3 overflow-x-auto px-4 pb-4 sm:px-5 lg:flex-1 lg:flex-col lg:space-y-2.5 lg:overflow-x-hidden lg:overflow-y-auto">{filtered.map((order) => <div key={order.id} className="w-[min(84vw,340px)] shrink-0 lg:w-full"><OrderCard order={order} selected={order.id === selectedId} onClick={() => setSelectedId(order.id)} /></div>)}{filtered.length === 0 && <div className="w-full py-8 text-center text-xs text-ink-500">Tomuto filtru neodpovídá žádná zakázka.</div>}</div><div className="hidden border-t border-white/[0.08] px-5 py-3 lg:block"><div className="flex items-center gap-2 text-[10px] text-ink-500"><ShieldCheck size={14} className="text-success-500" /> Všechny zakázky ověřuje CargoBoard</div></div></aside>
       <section className="relative order-1 h-[380px] min-h-0 bg-ink-950 p-3 sm:h-[480px] sm:p-5 lg:order-2 lg:h-full"><div className="mb-3 flex items-center justify-between gap-2 px-1"><div className="flex items-center gap-2 text-xs text-ink-400"><MapPin size={13} className="text-accent-400" /> Česko · západní region</div><div className="flex items-center gap-2 text-[10px] text-ink-400 sm:gap-3"><span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-accent-400" /> Nakládka</span><span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-success-400" /> Vyložení</span></div></div><div className="h-[calc(100%-32px)] min-h-0"><FreightMap order={selected} orders={orders} /></div><div className="pointer-events-none absolute bottom-8 left-8 hidden items-center gap-2 rounded-xl border border-white/[0.08] bg-ink-900/85 px-3 py-2 text-[10px] text-ink-400 shadow-lg backdrop-blur sm:flex"><Sparkles size={13} className="text-warning-400" /> Trasy se aktualizují v reálném čase</div></section>
       <aside className="order-3 min-h-[620px] border-t border-white/[0.08] bg-white/[0.015] lg:h-full lg:min-h-0 lg:border-l lg:border-t-0"><DetailPanel order={selected} mode={mode} onUpgrade={() => { setMode('PRO'); notify('Vítejte v PRO — kontakty odemčeny'); }} onMessage={(text) => notify(`Nabídka odeslána uživateli ${selected?.user}: „${text}“`)} /></aside>
-    </main>
+    </main>}
     {modalOpen && <AddOrderModal onClose={() => setModalOpen(false)} onAdd={addOrder} />}
     {toast && <div className="fixed bottom-5 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-2 rounded-xl border border-success-500/30 bg-ink-800 px-4 py-3 text-xs font-semibold text-ink-100 shadow-2xl shadow-black/40 animate-fade-in"><Check size={15} className="text-success-400" />{toast}</div>}
   </div>;
