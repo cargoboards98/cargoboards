@@ -119,9 +119,10 @@ export function AuthScreen({ onPreview, initialError }: AuthScreenProps) {
   return (
     <main className="min-h-full bg-ink-950 text-ink-200">
       <div className="grid min-h-screen lg:grid-cols-[minmax(0,1fr)_minmax(420px,0.9fr)]">
-        <section className="flex flex-col px-5 py-6 sm:px-10 lg:px-14">
+        <section className="relative isolate flex flex-col overflow-hidden px-4 py-4 sm:px-10 sm:py-6 lg:px-14">
+          <div className="pointer-events-none absolute -left-40 top-1/4 -z-10 h-96 w-96 rounded-full bg-accent-500/[0.08] blur-3xl" />
           <div className="flex w-fit items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-500 text-white shadow-lg shadow-accent-500/20">
+            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-accent-500 text-white shadow-lg shadow-accent-500/25">
               <Truck size={21} strokeWidth={2.4} />
             </span>
             <span>
@@ -134,10 +135,10 @@ export function AuthScreen({ onPreview, initialError }: AuthScreenProps) {
             </span>
           </div>
 
-          <div className="flex flex-1 items-center justify-center py-12">
-            <div className="w-full max-w-[420px]">
-              <div className="mb-8">
-                <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-accent-500/20 bg-accent-500/[0.08] px-3 py-1.5 text-[11px] font-semibold text-accent-300">
+          <div className="flex flex-1 items-center justify-center py-7 sm:py-10 lg:py-4">
+            <div className="w-full max-w-[460px] rounded-[26px] border border-white/[0.07] bg-white/[0.025] p-5 shadow-2xl shadow-black/10 backdrop-blur-sm sm:p-8 lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none lg:backdrop-blur-none">
+              <div className="mb-6 sm:mb-8 lg:mb-5">
+                <div className="mb-3 inline-flex max-w-full items-center gap-2 rounded-full border border-accent-500/20 bg-accent-500/[0.08] px-3 py-1.5 text-[11px] font-semibold text-accent-300">
                   <span className="h-1.5 w-1.5 rounded-full bg-success-400" />
                   Místní doprava bez zbytečných přejezdů
                 </div>
@@ -174,10 +175,10 @@ export function AuthScreen({ onPreview, initialError }: AuthScreenProps) {
                 </button>
               </div>
 
-              <form onSubmit={submit} className="space-y-4">
+              <form onSubmit={submit} className="space-y-3 sm:space-y-4 lg:space-y-3">
                 {isRegister && (
                   <>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="auth-account-grid grid grid-cols-2 gap-3">
                       <label className="block">
                         <span className="mb-1.5 block text-xs font-medium text-ink-300">Jméno</span>
                         <input
@@ -187,7 +188,7 @@ export function AuthScreen({ onPreview, initialError }: AuthScreenProps) {
                           value={form.firstName}
                           onChange={(event) => update('firstName', event.target.value)}
                           placeholder="Jan"
-                          className="field h-12 text-sm"
+                          className="field h-12 text-sm lg:h-10"
                         />
                       </label>
                       <label className="block">
@@ -199,14 +200,14 @@ export function AuthScreen({ onPreview, initialError }: AuthScreenProps) {
                           value={form.lastName}
                           onChange={(event) => update('lastName', event.target.value)}
                           placeholder="Novák"
-                          className="field h-12 text-sm"
+                          className="field h-12 text-sm lg:h-10"
                         />
                       </label>
                     </div>
 
                     <fieldset>
                       <legend className="mb-2 text-xs font-medium text-ink-300">Typ účtu</legend>
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="auth-name-grid grid grid-cols-2 gap-3">
                         {ACCOUNT_OPTIONS.map((option) => {
                           const selected = accountType === option.id;
                           const Icon = option.id === 'company' ? Building2 : UserRound;
@@ -245,7 +246,7 @@ export function AuthScreen({ onPreview, initialError }: AuthScreenProps) {
                       value={form.email}
                       onChange={(event) => update('email', event.target.value)}
                       placeholder="vas@email.cz"
-                      className="field h-12 pl-10 text-sm"
+                      className="field h-12 pl-10 text-sm lg:h-10"
                     />
                   </span>
                 </label>
@@ -263,7 +264,7 @@ export function AuthScreen({ onPreview, initialError }: AuthScreenProps) {
                         value={form.phone}
                         onChange={(event) => update('phone', event.target.value)}
                         placeholder="+420 777 123 456"
-                        className="field h-12 pl-10 text-sm"
+                        className="field h-12 pl-10 text-sm lg:h-10"
                       />
                     </span>
                   </label>
@@ -281,7 +282,7 @@ export function AuthScreen({ onPreview, initialError }: AuthScreenProps) {
                       value={form.password}
                       onChange={(event) => update('password', event.target.value)}
                       placeholder="Alespoň 8 znaků"
-                      className="field h-12 pl-10 pr-11 text-sm"
+                      className="field h-12 pl-10 pr-11 text-sm lg:h-10"
                     />
                     <button
                       type="button"
@@ -308,7 +309,7 @@ export function AuthScreen({ onPreview, initialError }: AuthScreenProps) {
                         value={form.confirmPassword}
                         onChange={(event) => update('confirmPassword', event.target.value)}
                         placeholder="Zadejte heslo znovu"
-                        className="field h-12 pl-10 pr-11 text-sm"
+                        className="field h-12 pl-10 pr-11 text-sm lg:h-10"
                       />
                     </span>
                   </label>
@@ -416,7 +417,7 @@ export function AuthScreen({ onPreview, initialError }: AuthScreenProps) {
             </div>
           </div>
 
-          <div className="flex items-center justify-between gap-4 text-[10px] text-ink-600">
+          <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-[10px] text-ink-600">
             <span>© 2026 CargoBoard CZ</span>
             <span className="flex items-center gap-1.5"><ShieldCheck size={13} /> Bezpečný přístup přes Supabase</span>
           </div>

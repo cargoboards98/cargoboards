@@ -4,24 +4,107 @@
 
 :root {
   color-scheme: dark;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-tap-highlight-color: transparent;
 }
 
 html,
 body,
 #root {
-  height: 100%;
+  min-height: 100%;
 }
 
 body {
   margin: 0;
-  background: #0f172a;
+  min-width: 320px;
+  background:
+    radial-gradient(ellipse at 12% -10%, rgb(37 99 235 / 14%), transparent 34rem),
+    #0b1220;
   color: #e2e8f0;
   -webkit-font-smoothing: antialiased;
 }
 
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  touch-action: manipulation;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid #60a5fa;
+  outline-offset: 2px;
+}
+
+.field {
+  width: 100%;
+  min-width: 0;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid rgb(71 85 105 / 72%);
+  border-radius: 0.75rem;
+  background: rgb(15 23 42 / 78%);
+  color: #f1f5f9;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+
+.field::placeholder {
+  color: #64748b;
+}
+
+.field:hover {
+  border-color: #64748b;
+}
+
+.field:focus {
+  border-color: #60a5fa;
+  background: #0f172a;
+  outline: none;
+  box-shadow: 0 0 0 3px rgb(59 130 246 / 16%);
+}
+
+.field:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.field.pl-8 {
+  padding-left: 2rem;
+}
+
+.field.pl-10 {
+  padding-left: 2.5rem;
+}
+
+.field.pr-11 {
+  padding-right: 2.75rem;
+}
+
+select.field {
+  color-scheme: dark;
+}
+
+::selection {
+  background: rgb(59 130 246 / 35%);
+  color: #fff;
+}
+
 ::-webkit-scrollbar {
-  width: 9px;
-  height: 9px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
@@ -29,8 +112,27 @@ body {
 ::-webkit-scrollbar-thumb {
   background: #334155;
   border-radius: 999px;
-  border: 2px solid #0f172a;
+  border: 2px solid #0b1220;
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #475569;
+}
+
+@media (max-width: 479px) {
+  .auth-name-grid,
+  .auth-account-grid,
+  .modal-field-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
