@@ -14,16 +14,15 @@ import {
   Phone,
   ShieldCheck,
   Truck,
-  UserRound,
 } from 'lucide-react';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 
 type AuthMode = 'login' | 'register';
-type AccountType = 'driver' | 'company';
+type AccountType = 'carrier' | 'shipper';
 
 const ACCOUNT_OPTIONS: { id: AccountType; title: string; description: string }[] = [
-  { id: 'driver', title: 'Řidič', description: 'Přepravuji jako jednotlivec' },
-  { id: 'company', title: 'Firma', description: 'Poptávám nebo zajišťuji přepravu' },
+  { id: 'carrier', title: 'Dopravce', description: 'Nabízím přepravní služby' },
+  { id: 'shipper', title: 'Poptávající', description: 'Vkládám poptávky na přepravu' },
 ];
 
 interface AuthScreenProps {
@@ -33,7 +32,7 @@ interface AuthScreenProps {
 
 export function AuthScreen({ onPreview, initialError }: AuthScreenProps) {
   const [mode, setMode] = useState<AuthMode>('register');
-  const [accountType, setAccountType] = useState<AccountType>('driver');
+  const [accountType, setAccountType] = useState<AccountType>('carrier');
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(initialError ?? null);
@@ -42,6 +41,7 @@ export function AuthScreen({ onPreview, initialError }: AuthScreenProps) {
     firstName: '',
     lastName: '',
     phone: '',
+    ico: '',
     email: '',
     password: '',
     confirmPassword: '',
@@ -76,6 +76,16 @@ export function AuthScreen({ onPreview, initialError }: AuthScreenProps) {
       return;
     }
 
+    if (isRegister && accountType === 'carrier' && !/^\d{8}$/.test(form.ico)) {
+      setError('Dopravce musí zadat platné IČO o délce 8 číslic.');
+      return;
+    }
+
+    if (isRegister && form.ico && !/^\d{8}$/.test(form.ico)) {
+      setError('IČO musí obsahovat přesně 8 číslic.');
+      return;
+    }
+
     setBusy(true);
     try {
       const email = form.email.trim();
@@ -89,6 +99,7 @@ export function AuthScreen({ onPreview, initialError }: AuthScreenProps) {
               last_name: form.lastName.trim(),
               phone: form.phone.trim(),
               account_type: accountType,
+              ico: form.ico.trim() || null,
             },
           },
         });
@@ -210,7 +221,7 @@ export function AuthScreen({ onPreview, initialError }: AuthScreenProps) {
                       <div className="auth-name-grid grid grid-cols-2 gap-3">
                         {ACCOUNT_OPTIONS.map((option) => {
                           const selected = accountType === option.id;
-                          const Icon = option.id === 'company' ? Building2 : UserRound;
+                          const Icon = option.id === 'carrier' ? Truck : Building2;
                           return (
                             <button
                               key={option.id}
@@ -231,6 +242,30 @@ export function AuthScreen({ onPreview, initialError }: AuthScreenProps) {
                         })}
                       </div>
                     </fieldset>
+
+                    <label className="block">
+                      <span className="mb-1.5 block text-xs font-medium text-ink-300">
+                        IČO {accountType === 'carrier' ? '' : '(nepovinné)'}
+                      </span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="off"
+                        required={accountType === 'carrier'}
+                        pattern="[0-9]{8}"
+                        maxLength={8}
+                        value={form.ico}
+                        onChange={(event) => update('ico', event.target.value.replace(/\D/g, '').slice(0, 8))}
+                        placeholder="12345678"
+                        aria-describedby="ico-help"
+                        className="field h-12 text-sm lg:h-10"
+                      />
+                      <span id="ico-help" className="mt-1.5 block text-[11px] text-ink-500">
+                        {accountType === 'carrier'
+                          ? 'Dopravce zadává povinné osmimístné IČO.'
+                          : 'Poptávající může uvést IČO, pokud vystupuje jako firma.'}
+                      </span>
+                    </label>
                   </>
                 )}
 

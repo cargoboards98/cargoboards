@@ -2,14 +2,16 @@
 
 ## 1. Vytvoření tabulky profilů
 
-V Supabase Dashboardu otevřete **SQL Editor → New query**, vložte obsah
-[`migrations/20261107130000_create_profiles.sql`](./migrations/20261107130000_create_profiles.sql)
-a spusťte ho.
+V Supabase Dashboardu otevřete **SQL Editor → New query** a spusťte migrace
+v tomto pořadí:
 
-Migrace vytvoří tabulku `public.profiles`, při registraci do ní uloží jméno,
-příjmení, telefon a typ účtu a povolí přihlášenému uživateli číst pouze jeho
-vlastní profil. Doplní také profily existujících účtů, které mají potřebné údaje
-v metadatech. Hesla zůstávají výhradně v Supabase Auth.
+1. [`migrations/20261107130000_create_profiles.sql`](./migrations/20261107130000_create_profiles.sql)
+2. [`migrations/20261108161000_add_carrier_shipper_roles.sql`](./migrations/20261108161000_add_carrier_shipper_roles.sql)
+
+Migrace vytvoří tabulku `public.profiles`; při registraci do ní uloží jméno,
+příjmení, telefon, typ účtu a případné IČO. Účet dopravce musí mít osmimístné
+IČO; poptávající ho může uvést nepovinně. Povolí přihlášenému uživateli číst
+pouze jeho vlastní profil. Hesla zůstávají výhradně v Supabase Auth.
 
 ## 2. Nastavení přihlášení e-mailem
 
