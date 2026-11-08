@@ -8,8 +8,8 @@ a spusťte ho.
 
 Migrace vytvoří tabulku `public.profiles`, při registraci do ní uloží jméno,
 příjmení, telefon a typ účtu a povolí přihlášenému uživateli číst pouze jeho
-vlastní profil. Také doplní profily existujících účtů, které mají potřebné
-údaje v metadatech. Hesla zůstávají výhradně v Supabase Auth.
+vlastní profil. Doplní také profily existujících účtů, které mají potřebné údaje
+v metadatech. Hesla zůstávají výhradně v Supabase Auth.
 
 ## 2. Nastavení přihlášení e-mailem
 
@@ -21,19 +21,13 @@ Pro místní vývoj přidejte `http://localhost:5173/**`.
 
 ## 3. Nastavení webové aplikace
 
-V **Project Settings → API** zkopírujte Project URL a veřejný publishable key.
-V projektu Vercel nastavte pro **Production** tyto environment proměnné:
-
-- `VITE_SUPABASE_URL` — Project URL z Supabase.
-- `VITE_SUPABASE_PUBLISHABLE_KEY` — veřejný publishable key z Supabase.
-
-Po uložení proměnných spusťte nové nasazení (**Redeploy**), protože Vite je
-zahrnuje do aplikace při buildu. Do Vercelu ani GitHubu nevkládejte `service_role`
-klíč. Lokální hodnoty patří do ignorovaného souboru `.env.local`.
+Lokálně zkopírujte `.env.example` do `.env.local`. Ve Vercelu nastavte pro
+Production `VITE_SUPABASE_URL` a `VITE_SUPABASE_PUBLISHABLE_KEY` a spusťte nové
+nasazení. Používejte pouze veřejný publishable key. Nikdy nedávejte do klienta
+ani do GitHubu `service_role` klíč.
 
 ## 4. Ověření
 
-Po dokončení redeploye otevřete web, zaregistrujte testovací účet a případně
-potvrďte e-mail. V Supabase ověřte nový záznam v **Authentication → Users** a
-odpovídající profil v **Table Editor → profiles**. Zkontrolujte také, že je
-záznam dostupný pouze po přihlášení jeho vlastníka.
+Zaregistrujte testovací účet, potvrďte e-mail (pokud je potvrzování zapnuté) a
+ověřte záznam v **Authentication → Users** a **Table Editor → profiles**.
+Profil je viditelný pouze přihlášenému vlastníkovi.
