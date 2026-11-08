@@ -15,9 +15,14 @@ v metadatech. Hesla zůstávají výhradně v Supabase Auth.
 
 V **Authentication → Providers → Email** povolte e-mailové přihlášení.
 Pokud je zapnuté potvrzování e-mailů, nastavte v **Authentication → URL
-Configuration** produkční Site URL na `https://cargoboards.vercel.app` a
-přidejte mezi povolené redirect URL také `https://cargoboards.vercel.app/**`.
-Pro místní vývoj přidejte `http://localhost:5173/**`.
+Configuration** Site URL na `http://localhost:5173` a přidejte mezi povolené
+redirect URL `http://localhost:5173/**` (případně také
+`http://127.0.0.1:5173/**`).
+
+Před produkčním spuštěním změňte Site URL na skutečnou adresu nasazené aplikace
+a přidejte mezi povolené redirect URL také `<adresa-aplikace>/**`. Nepoužívejte
+`https://cargoboards.vercel.app`, dokud není tato doména správně nasazená a
+ověřená.
 
 ## 3. Nastavení webové aplikace
 
