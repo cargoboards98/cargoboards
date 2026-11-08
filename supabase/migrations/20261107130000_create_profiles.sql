@@ -13,11 +13,19 @@ alter table public.profiles enable row level security;
 revoke all on public.profiles from anon;
 grant select on public.profiles to authenticated;
 
-create policy "Users can read their own profile"
-  on public.profiles
-  for select
-  to authenticated
-  using ((select auth.uid()) = id);
+do $migration$
+begin
+  if not exists (
+    select 1
+    from pg_policies
+    where schemaname = 'public'
+      and tablename = 'profiles'
+      and policyname = 'Users can read their own profile'
+  ) then
+    execute 'create policy "Users can read their own profile" on public.profiles for select to authenticated using ((select auth.uid()) = id)';
+  end if;
+end
+$migration$;
 
 create or replace function public.create_profile_for_new_user()
 returns trigger
@@ -60,10 +68,19 @@ begin
 end;
 $$;
 
-create trigger on_auth_user_created_create_profile
-  after insert on auth.users
-  for each row
-  execute function public.create_profile_for_new_user();
+do $migration$
+begin
+  if not exists (
+    select 1
+    from pg_trigger
+    where tgname = 'on_auth_user_created_create_profile'
+      and tgrelid = 'auth.users'::regclass
+      and not tgisinternal
+  ) then
+    execute 'create trigger on_auth_user_created_create_profile after insert on auth.users for each row execute function public.create_profile_for_new_user()';
+  end if;
+end
+$migration$;
 
 insert into public.profiles (id, first_name, last_name, phone, account_type)
 select
