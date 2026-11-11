@@ -9,6 +9,7 @@ soubory v tomto pořadí:
 2. [`migrations/20261108161000_add_carrier_shipper_roles.sql`](./migrations/20261108161000_add_carrier_shipper_roles.sql)
 3. [`migrations/20261111100000_normalize_account_roles.sql`](./migrations/20261111100000_normalize_account_roles.sql)
 4. [`migrations/20261111110000_marketplace_features.sql`](./migrations/20261111110000_marketplace_features.sql)
+5. [`migrations/20261111120000_admin_account_mode.sql`](./migrations/20261111120000_admin_account_mode.sql)
 
 Migrace sjednotí role na `carrier` a `shipper`, zachovají požadavek na IČO
 dopravce a vytvoří tabulky pro profily, zakázky, soukromé kontakty, chat,
@@ -16,6 +17,11 @@ notifikace, recenze, nahlášení a Stripe webhook idempotenci. RLS a databázov
 funkce chrání zápis zakázek, kontaktů, předplatného i komunikace. Kontaktní
 telefon a e-mail jsou oddělené od veřejných detailů zakázky; dopravcům je vrací
 pouze `get_order_contact`, která ověřuje aktivní PRO přímo v databázi.
+
+Administrátorský účet `cargoboards@gmail.com` může spravovat uživatele a jako
+jediný přepínat mezi režimy dopravce a poptávajícího. Režim dopravce vyžaduje
+platné osmimístné IČO. Přepnutí se provádí přes databázovou funkci
+`set_admin_account_mode`; běžným uživatelům tato funkce přepnutí nepovolí.
 
 ## 2. Edge Functions a Stripe
 

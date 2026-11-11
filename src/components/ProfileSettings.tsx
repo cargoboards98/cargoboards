@@ -36,6 +36,7 @@ export interface ProfileSummary {
 export function ProfileSettings({
   userId,
   role,
+  isAdmin,
   name,
   email,
   profile,
@@ -46,6 +47,7 @@ export function ProfileSettings({
 }: {
   userId: string;
   role: AccountRole;
+  isAdmin: boolean;
   name: string;
   email: string;
   profile: ProfileSummary;
@@ -69,6 +71,7 @@ export function ProfileSettings({
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
+  const showCarrierProfile = role === 'carrier' || isAdmin;
 
   useEffect(() => {
     if (!supabase) return;
@@ -113,8 +116,8 @@ export function ProfileSettings({
       first_name: values.first_name.trim(),
       last_name: values.last_name.trim(),
       phone: values.phone.trim(),
-      ...(role === 'carrier' ? { ico: values.ico } : {}),
-      ...(role === 'carrier' ? {
+      ...(showCarrierProfile ? { ico: values.ico.trim() || null } : {}),
+      ...(showCarrierProfile ? {
         vehicle_type: values.vehicle_type.trim() || null,
         vehicle_length_cm: numeric(values.vehicle_length_cm),
         vehicle_width_cm: numeric(values.vehicle_width_cm),
@@ -136,12 +139,12 @@ export function ProfileSettings({
     }
     onSave({
       ...profile,
-      ico: role === 'carrier' ? values.ico : profile.ico,
-      vehicleType: role === 'carrier' ? patch.vehicle_type ?? null : profile.vehicleType ?? null,
-      vehicleLengthCm: role === 'carrier' ? patch.vehicle_length_cm ?? null : profile.vehicleLengthCm ?? null,
-      vehicleWidthCm: role === 'carrier' ? patch.vehicle_width_cm ?? null : profile.vehicleWidthCm ?? null,
-      vehicleHeightCm: role === 'carrier' ? patch.vehicle_height_cm ?? null : profile.vehicleHeightCm ?? null,
-      payloadKg: role === 'carrier' ? patch.payload_kg ?? null : profile.payloadKg ?? null,
+      ico: showCarrierProfile ? patch.ico ?? null : profile.ico,
+      vehicleType: showCarrierProfile ? patch.vehicle_type ?? null : profile.vehicleType ?? null,
+      vehicleLengthCm: showCarrierProfile ? patch.vehicle_length_cm ?? null : profile.vehicleLengthCm ?? null,
+      vehicleWidthCm: showCarrierProfile ? patch.vehicle_width_cm ?? null : profile.vehicleWidthCm ?? null,
+      vehicleHeightCm: showCarrierProfile ? patch.vehicle_height_cm ?? null : profile.vehicleHeightCm ?? null,
+      payloadKg: showCarrierProfile ? patch.payload_kg ?? null : profile.payloadKg ?? null,
     }, `${patch.first_name} ${patch.last_name}`.trim());
     setNotice('Profil byl uložen.');
   };
@@ -164,8 +167,8 @@ export function ProfileSettings({
             <label className="text-xs text-ink-300">Příjmení<input required maxLength={80} value={values.last_name} onChange={(event) => update('last_name', event.target.value)} className="field mt-1.5" /></label>
           </div>
           <label className="block text-xs text-ink-300">Telefon<input required maxLength={32} type="tel" value={values.phone} onChange={(event) => update('phone', event.target.value)} className="field mt-1.5" /></label>
-          {role === 'carrier' && <>
-            <label className="block text-xs text-ink-300">IČO dopravce<input required inputMode="numeric" pattern="[0-9]{8}" maxLength={8} value={values.ico} onChange={(event) => update('ico', event.target.value.replace(/\D/g, '').slice(0, 8))} className="field mt-1.5" /></label>
+          {showCarrierProfile && <>
+            <label className="block text-xs text-ink-300">IČO dopravce<input required={role === 'carrier'} inputMode="numeric" pattern="[0-9]{8}" maxLength={8} value={values.ico} onChange={(event) => update('ico', event.target.value.replace(/\D/g, '').slice(0, 8))} className="field mt-1.5" />{isAdmin && role === 'shipper' && <span className="mt-1 block text-[10px] text-ink-500">Vyplňte IČO, pokud chcete účet používat také jako dopravce.</span>}</label>
             <div className="flex items-center gap-2 pt-2 text-xs font-bold uppercase tracking-wider text-ink-300"><Truck size={14} className="text-accent-300" /> Vozidlo / dodávka</div>
             <label className="block text-xs text-ink-300">Typ vozidla<input maxLength={80} value={values.vehicle_type} onChange={(event) => update('vehicle_type', event.target.value)} placeholder="např. dodávka s plachtou" className="field mt-1.5" /></label>
             <div className="grid grid-cols-2 gap-3">

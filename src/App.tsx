@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { FreightMap } from '@/components/FreightMap';
 import { AuthScreen } from '@/components/AuthScreen';
+import { AdminUsersPanel } from '@/components/AdminUsersPanel';
 import { CookieConsent } from '@/components/CookieConsent';
 import { LegalPages, type LegalPage } from '@/components/LegalPages';
 import { OrderChat } from '@/components/OrderChat';
@@ -198,10 +199,12 @@ function App() {
     const route = window.location.hash.slice(1);
     return route === '/terms' || route === '/privacy' || route === '/complaints' ? route.slice(1) as LegalPage : null;
   });
+  const [adminPage, setAdminPage] = useState(() => window.location.hash === '#/admin');
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(Boolean(supabase));
   const [authError, setAuthError] = useState<string | null>(null);
   const [accountRole, setAccountRole] = useState<AccountRole | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [profileName, setProfileName] = useState('');
@@ -235,6 +238,7 @@ function App() {
     const syncLegalPage = () => {
       const route = window.location.hash.slice(1);
       setLegalPage(route === '/terms' || route === '/privacy' || route === '/complaints' ? route.slice(1) as LegalPage : null);
+      setAdminPage(route === '/admin');
     };
     window.addEventListener('hashchange', syncLegalPage);
     return () => window.removeEventListener('hashchange', syncLegalPage);
@@ -279,6 +283,7 @@ function App() {
   useEffect(() => {
     if (!user || !supabase) {
       setAccountRole('carrier');
+      setIsAdmin(false);
       setProfileError(null);
       setProfileLoading(false);
       return;
@@ -293,13 +298,14 @@ function App() {
       try {
         const { data, error } = await client
           .from('profiles')
-          .select('account_type, first_name, last_name, ico, is_pro, subscription_status, vehicle_type, vehicle_length_cm, vehicle_width_cm, vehicle_height_cm, payload_kg')
+          .select('account_type, role, first_name, last_name, ico, is_pro, subscription_status, vehicle_type, vehicle_length_cm, vehicle_width_cm, vehicle_height_cm, payload_kg')
           .eq('id', user.id)
           .maybeSingle();
         if (!active) return;
         if (error) {
           setProfileError(`Nepodařilo se načíst roli účtu: ${error.message}`);
         } else if (data?.account_type === 'carrier' || data?.account_type === 'shipper') {
+          setIsAdmin(data.role === 'admin');
           setAccountRole(data.account_type);
           setProfileName(`${data.first_name} ${data.last_name}`.trim());
           setProfileSummary({
@@ -328,6 +334,7 @@ function App() {
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${user.id}` }, ({ new: row }) => {
         if (!active) return;
         if (row.account_type === 'carrier' || row.account_type === 'shipper') setAccountRole(row.account_type);
+        setIsAdmin(row.role === 'admin');
         setProfileName(`${row.first_name ?? ''} ${row.last_name ?? ''}`.trim());
         setProfileSummary({
           isPro: row.is_pro === true && row.subscription_status === 'active',
@@ -401,11 +408,28 @@ function App() {
   const selected = orders.find((o) => o.id === selectedId) ?? null;
   const filtered = useMemo(() => vehicle === 'All' ? orders : orders.filter((o) => o.vehicle === vehicle), [orders, vehicle]);
   const notify = useCallback((msg: string) => { setToast(msg); window.setTimeout(() => setToast(''), 3500); }, []);
+  const switchAccountRole = useCallback(async (nextRole: AccountRole) => {
+    if (!user || !supabase || !isAdmin || nextRole === accountRole) return;
+    if (nextRole === 'carrier' && !/^\d{8}$/.test(profileSummary.ico ?? '')) {
+      notify('Pro režim dopravce nejdřív doplňte platné IČO v nastavení profilu.');
+      setProfileOpen(true);
+      return;
+    }
+    const { error } = await supabase.rpc('set_admin_account_mode', { requested_account_type: nextRole });
+    if (error) {
+      notify(`Režim účtu se nepodařilo změnit: ${error.message}`);
+      return;
+    }
+    setAccountRole(nextRole);
+    setAdminPage(false);
+    window.location.hash = '#/';
+    notify(nextRole === 'carrier' ? 'Přepnuto do režimu dopravce.' : 'Přepnuto do režimu poptávajícího.');
+  }, [user, isAdmin, accountRole, profileSummary.ico, notify]);
   const reloadProfile = useCallback(async () => {
     if (!user || !supabase) return;
     try {
       const { data, error } = await supabase.from('profiles')
-        .select('account_type, first_name, last_name, ico, is_pro, subscription_status, vehicle_type, vehicle_length_cm, vehicle_width_cm, vehicle_height_cm, payload_kg')
+        .select('account_type, role, first_name, last_name, ico, is_pro, subscription_status, vehicle_type, vehicle_length_cm, vehicle_width_cm, vehicle_height_cm, payload_kg')
         .eq('id', user.id)
         .single();
       if (error) {
@@ -416,6 +440,7 @@ function App() {
         notify('Profil má neplatnou roli uživatele.');
         return;
       }
+      setIsAdmin(data.role === 'admin');
       setAccountRole(data.account_type);
       setProfileName(`${data.first_name} ${data.last_name}`.trim());
       setProfileSummary({
@@ -651,12 +676,14 @@ function App() {
         {accountRole === 'carrier'
           ? <><a href="#orders" className="rounded-lg px-4 py-2 text-xs font-medium text-ink-300 hover:text-white">Vyhledávání</a><a href="#map" className="rounded-lg px-4 py-2 text-xs font-medium text-ink-500 hover:text-ink-200">Mapa zakázek</a></>
           : <a href="#my-orders" className="rounded-lg bg-white/[0.08] px-4 py-2 text-xs font-semibold text-white">Moje poptávky</a>}
+        {isAdmin && <a href="#/admin" className="rounded-lg px-3 py-2 text-xs font-semibold text-accent-300 hover:bg-accent-500/10">Administrace</a>}
       </div>
       <div className="flex items-center gap-1.5 sm:gap-3">
         {user && <button onClick={() => void markNotificationsRead()} aria-label={`${unreadNotifications} nepřečtených notifikací`} title={`${unreadNotifications} nepřečtených notifikací`} className="relative rounded-lg p-2 text-ink-400 hover:bg-ink-800 hover:text-white">
           <Bell size={17} />{unreadNotifications > 0 && <span className="absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger-500 px-1 text-[9px] font-bold text-white">{unreadNotifications > 9 ? '9+' : unreadNotifications}</span>}
         </button>}
         <button onClick={() => setProfileOpen(true)} aria-label="Nastavení profilu" title="Nastavení profilu" className="rounded-lg p-2 text-ink-400 hover:bg-ink-800 hover:text-white"><Settings size={16} /></button>
+        {isAdmin && <button onClick={() => void switchAccountRole(accountRole === 'carrier' ? 'shipper' : 'carrier')} title={accountRole === 'carrier' ? 'Přepnout do režimu poptávajícího' : 'Přepnout do režimu dopravce'} className="flex items-center gap-1 rounded-xl border border-accent-500/25 bg-accent-500/[0.08] px-2 py-2 text-[10px] font-bold text-accent-200 hover:bg-accent-500/15 sm:px-3 sm:text-xs"><ArrowDownUp size={13} /><span>{accountRole === 'carrier' ? 'Dopravce' : 'Poptávající'}</span></button>}
         {accountRole === 'carrier'
           ? <button onClick={() => user ? setProfileOpen(true) : setMode(mode === 'PRO' ? 'FREE' : 'PRO')} className={`flex items-center gap-1.5 rounded-xl border px-2 py-2 text-[11px] font-bold transition sm:px-3 sm:text-xs ${effectiveMode === 'PRO' ? 'border-accent-500/40 bg-accent-500/10 text-accent-300 hover:bg-accent-500/20' : 'border-ink-600 bg-ink-800 text-ink-400 hover:text-ink-200'}`}><span className={`h-1.5 w-1.5 rounded-full ${effectiveMode === 'PRO' ? 'bg-success-400 shadow-[0_0_8px_#22c55e]' : 'bg-ink-500'}`} /><span>{effectiveMode === 'PRO' ? 'PRO účet' : 'FREE účet'}</span><ChevronDown size={13} /></button>
           : <span className="hidden rounded-xl border border-success-500/25 bg-success-500/[0.07] px-2.5 py-2 text-[11px] font-bold text-success-300 sm:inline-flex">Poptávající · zdarma</span>}
@@ -665,7 +692,11 @@ function App() {
       </div>
     </header>
     {ordersError && <p role="alert" className="mx-auto mt-3 max-w-5xl rounded-xl border border-danger-500/25 bg-danger-500/10 px-4 py-3 text-xs text-danger-200">{ordersError}</p>}
-    {accountRole === 'carrier' ? <main className="mx-auto grid max-w-[1800px] grid-cols-1 pb-20 lg:h-[calc(100dvh-64px)] lg:min-h-0 lg:grid-cols-[300px_minmax(0,1fr)_350px] lg:grid-rows-1 lg:overflow-hidden lg:pb-0 xl:grid-cols-[320px_minmax(0,1fr)_380px]">
+    {adminPage
+      ? isAdmin && user
+        ? <AdminUsersPanel currentUserId={user.id} onNotify={notify} />
+        : <main className="mx-auto min-h-[65vh] max-w-3xl px-4 py-12 text-center"><h1 className="text-xl font-bold text-white">Administrace není dostupná</h1><p className="mt-2 text-sm text-ink-400">Tato část je přístupná pouze správci.</p><a href="#/" className="mt-5 inline-flex rounded-lg bg-accent-500 px-4 py-2 text-sm font-semibold text-white">Zpět do aplikace</a></main>
+      : accountRole === 'carrier' ? <main className="mx-auto grid max-w-[1800px] grid-cols-1 pb-20 lg:h-[calc(100dvh-64px)] lg:min-h-0 lg:grid-cols-[300px_minmax(0,1fr)_350px] lg:grid-rows-1 lg:overflow-hidden lg:pb-0 xl:grid-cols-[320px_minmax(0,1fr)_380px]">
       <aside id="orders" className="order-2 flex min-h-0 flex-col border-b border-white/[0.08] bg-white/[0.015] lg:order-1 lg:h-full lg:border-b-0 lg:border-r"><div className="flex items-center justify-between gap-3 px-4 pb-3 pt-5 sm:px-5"><div><h1 className="text-base font-bold text-white">Dostupné zakázky</h1><p className="mt-1 text-[11px] text-ink-500"><span className="text-success-400">{filtered.length} aktivních</span>{ordersLoading ? ' · načítám…' : ' · z databáze'}</p></div></div><div className="flex items-center gap-2 px-4 pb-4 sm:px-5"><div className="relative flex-1"><ArrowDownUp size={13} className="pointer-events-none absolute left-3 top-2.5 text-ink-500" /><select value={vehicle} onChange={(e) => setVehicle(e.target.value as typeof vehicle)} className="field h-9 appearance-none pl-8 pr-7 text-[11px]"><option value="All">{VEHICLE_LABELS.All}</option><option value="Combi">{VEHICLE_LABELS.Combi}</option><option value="Van">{VEHICLE_LABELS.Van}</option><option value="Trailer">{VEHICLE_LABELS.Trailer}</option></select><ChevronDown size={13} className="pointer-events-none absolute right-2.5 top-3 text-ink-500" /></div><button aria-label="Nastavení filtru" className="rounded-xl border border-white/[0.08] bg-white/[0.035] p-2.5 text-ink-400 transition hover:text-white"><Gauge size={14} /></button></div><div className="flex min-h-0 gap-3 overflow-x-auto px-4 pb-4 sm:px-5 lg:flex-1 lg:flex-col lg:space-y-2.5 lg:overflow-x-hidden lg:overflow-y-auto">{filtered.map((order) => <div key={order.id} className="w-[min(84vw,340px)] shrink-0 lg:w-full"><OrderCard order={order} selected={order.id === selectedId} onClick={() => setSelectedId(order.id)} /></div>)}{filtered.length === 0 && <div className="w-full py-8 text-center text-xs text-ink-500">{ordersLoading ? 'Načítám zakázky…' : 'Zatím zde nejsou žádné zakázky.'}</div>}</div><div className="hidden border-t border-white/[0.08] px-5 py-3 lg:block"><div className="flex items-center gap-2 text-[10px] text-ink-500"><ShieldCheck size={14} className="text-success-500" /> Kontakty jsou zpřístupněny přes ověření předplatného</div></div></aside>
       <section id="map" className="relative order-1 h-[380px] min-h-0 bg-ink-950 p-3 sm:h-[480px] sm:p-5 lg:order-2 lg:h-full"><div className="mb-3 flex items-center justify-between gap-2 px-1"><div className="flex items-center gap-2 text-xs text-ink-400"><MapPin size={13} className="text-accent-400" /> Česko · západní region</div><div className="flex items-center gap-2 text-[10px] text-ink-400 sm:gap-3"><span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-accent-400" /> Nakládka</span><span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-success-400" /> Vyložení</span></div></div><div className="h-[calc(100%-32px)] min-h-0"><FreightMap order={selected} orders={orders} onSelectOrder={setSelectedId} /></div><div className="pointer-events-none absolute bottom-8 left-8 hidden items-center gap-2 rounded-xl border border-white/[0.08] bg-ink-900/85 px-3 py-2 text-[10px] text-ink-400 shadow-lg backdrop-blur sm:flex"><Sparkles size={13} className="text-warning-400" /> Výběrem markeru otevřete detail zakázky</div></section>
       <aside className="order-3 min-h-[620px] border-t border-white/[0.08] bg-white/[0.015] lg:h-full lg:min-h-0 lg:border-l lg:border-t-0"><DetailPanel order={selected} mode={effectiveMode} role="carrier" userId={user?.id} contact={orderContact} contactLoading={contactLoading} contactError={contactError} isOwner={false} onUpgrade={() => void startCheckout()} onClaim={() => void claimOrder()} onComplete={() => void completeOrder()} onReport={() => setReportOpen(true)} /></aside>
@@ -712,19 +743,21 @@ function App() {
     <SiteFooter />
     <CookieConsent />
     {modalOpen && accountRole === 'shipper' && <AddOrderModal onClose={() => setModalOpen(false)} onAdd={addOrder} defaultEmail={user?.email ?? ''} />}
-    {user && profileOpen && accountRole && <ProfileSettings userId={user.id} role={accountRole} name={displayName} email={user.email ?? ''} profile={profileSummary} onClose={() => setProfileOpen(false)} onSave={(summary, name) => { setProfileSummary(summary); setProfileName(name); }} onUpgrade={() => void startCheckout()} onManageSubscription={() => void openCustomerPortal()} />}
+    {user && profileOpen && accountRole && <ProfileSettings userId={user.id} role={accountRole} isAdmin={isAdmin} name={displayName} email={user.email ?? ''} profile={profileSummary} onClose={() => setProfileOpen(false)} onSave={(summary, name) => { setProfileSummary(summary); setProfileName(name); }} onUpgrade={() => void startCheckout()} onManageSubscription={() => void openCustomerPortal()} />}
     {user && reportOpen && selected && <ReportDialog orderId={selected.id} reportedUserId={selected.ownerId} reporterId={user.id} onClose={() => setReportOpen(false)} onSubmitted={() => { setReportOpen(false); notify('Děkujeme, nahlášení bylo předáno ke kontrole.'); }} />}
-    <nav aria-label="Spodní navigace" className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-3 border-t border-white/[0.08] bg-ink-950/95 px-2 pb-[max(0.35rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-8px_24px_rgba(0,0,0,0.2)] backdrop-blur md:hidden">
+    {!adminPage && <nav aria-label="Spodní navigace" className={`fixed inset-x-0 bottom-0 z-40 grid ${isAdmin ? 'grid-cols-4' : 'grid-cols-3'} border-t border-white/[0.08] bg-ink-950/95 px-2 pb-[max(0.35rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-8px_24px_rgba(0,0,0,0.2)] backdrop-blur md:hidden`}>
       {accountRole === 'carrier' ? <>
         <a href="#orders" className="flex flex-col items-center gap-1 py-1.5 text-[10px] font-semibold text-ink-300"><Package size={17} />Zakázky</a>
         <a href="#map" className="flex flex-col items-center gap-1 py-1.5 text-[10px] font-semibold text-ink-300"><MapPin size={17} />Mapa</a>
         <button onClick={() => setProfileOpen(true)} className="flex flex-col items-center gap-1 py-1.5 text-[10px] font-semibold text-ink-300"><Settings size={17} />Profil</button>
+        {isAdmin && <a href="#/admin" className="flex flex-col items-center gap-1 py-1.5 text-[10px] font-semibold text-accent-300"><ShieldCheck size={17} />Admin</a>}
       </> : <>
         <a href="#my-orders" className="flex flex-col items-center gap-1 py-1.5 text-[10px] font-semibold text-ink-300"><Package size={17} />Poptávky</a>
         <button onClick={() => setModalOpen(true)} className="flex flex-col items-center gap-1 py-1.5 text-[10px] font-semibold text-accent-300"><Plus size={17} />Vložit</button>
         <button onClick={() => setProfileOpen(true)} className="flex flex-col items-center gap-1 py-1.5 text-[10px] font-semibold text-ink-300"><Settings size={17} />Profil</button>
+        {isAdmin && <a href="#/admin" className="flex flex-col items-center gap-1 py-1.5 text-[10px] font-semibold text-accent-300"><ShieldCheck size={17} />Admin</a>}
       </>}
-    </nav>
+    </nav>}
     {toast && <div className="fixed bottom-5 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-2 rounded-xl border border-success-500/30 bg-ink-800 px-4 py-3 text-xs font-semibold text-ink-100 shadow-2xl shadow-black/40 animate-fade-in"><Check size={15} className="text-success-400" />{toast}</div>}
   </div>;
 }
