@@ -16,9 +16,10 @@ import {
   Truck,
 } from 'lucide-react';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
+import type { AccountRole } from '@/types';
 
 type AuthMode = 'login' | 'register';
-type AccountType = 'carrier' | 'shipper';
+type AccountType = AccountRole;
 
 const ACCOUNT_OPTIONS: { id: AccountType; title: string; description: string }[] = [
   { id: 'carrier', title: 'Dopravce', description: 'Nabízím přepravní služby' },
@@ -35,6 +36,7 @@ export function AuthScreen({ onPreview, initialError }: AuthScreenProps) {
   const [accountType, setAccountType] = useState<AccountType>('carrier');
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const [error, setError] = useState<string | null>(initialError ?? null);
   const [notice, setNotice] = useState<string | null>(null);
   const [form, setForm] = useState({
@@ -65,6 +67,11 @@ export function AuthScreen({ onPreview, initialError }: AuthScreenProps) {
     event.preventDefault();
     setError(null);
     setNotice(null);
+
+    if (isRegister && !termsAccepted) {
+      setError('Pro vytvoření účtu musíte souhlasit s obchodními podmínkami a zásadami ochrany osobních údajů.');
+      return;
+    }
 
     if (!supabase) {
       setError('Přihlášení není nakonfigurováno. Zkontrolujte VITE_SUPABASE_URL a veřejný klíč v .env.local.');
@@ -100,6 +107,8 @@ export function AuthScreen({ onPreview, initialError }: AuthScreenProps) {
               phone: form.phone.trim(),
               account_type: accountType,
               ico: form.ico.trim() || null,
+              terms_accepted_at: new Date().toISOString(),
+              terms_version: 'draft-2026-11-11',
             },
           },
         });
@@ -382,6 +391,31 @@ export function AuthScreen({ onPreview, initialError }: AuthScreenProps) {
                       Zapomněli jste heslo?
                     </button>
                   </div>
+                )}
+
+                {isRegister && (
+                  <label className="flex items-start gap-2.5 rounded-xl border border-ink-700/70 bg-ink-900/40 p-3 text-xs leading-5 text-ink-300">
+                    <input
+                      type="checkbox"
+                      required
+                      checked={termsAccepted}
+                      onChange={(event) => {
+                        setTermsAccepted(event.target.checked);
+                        setError(null);
+                      }}
+                      className="mt-1 h-4 w-4 shrink-0 accent-blue-500"
+                    />
+                    <span>
+                      Souhlasím s{' '}
+                      <a href="#/terms" className="font-semibold text-accent-300 underline decoration-accent-300/40 underline-offset-2 hover:text-accent-200">
+                        Obchodními podmínkami
+                      </a>{' '}
+                      a{' '}
+                      <a href="#/privacy" className="font-semibold text-accent-300 underline decoration-accent-300/40 underline-offset-2 hover:text-accent-200">
+                        Zásadami ochrany osobních údajů
+                      </a>.
+                    </span>
+                  </label>
                 )}
 
                 {error && (

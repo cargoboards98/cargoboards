@@ -20,6 +20,10 @@ export interface Order {
   rating: number;
   reviews: number;
   phone: string;
+  email?: string;
+  ownerId?: string;
+  claimedBy?: string | null;
+  status?: 'open' | 'completed' | 'cancelled';
   description: string;
   createdAt: number;
 }
@@ -32,3 +36,5 @@ export interface ChatMessage {
 }
 
 export type AccountMode = 'PRO' | 'FREE';
+
+export type AccountRole = 'carrier' | 'shipper';

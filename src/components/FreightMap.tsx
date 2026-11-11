@@ -2,7 +2,8 @@ import { useMemo } from 'react';
 import type { Order } from '@/types';
 import { CITIES } from '@/data';
 import { project, MAP_W, MAP_H } from '@/lib/map';
-import { MapPin } from 'lucide-react';
+import { ArrowRight, MapPin } from 'lucide-react';
+import { formatCZK } from '@/lib/utils';
 
 const CITY_LIST = Object.values(CITIES);
 
@@ -20,7 +21,7 @@ const ROADS: [string, string][] = [
   ['Plzeň', 'Praha'],
 ];
 
-export function FreightMap({ order, orders }: { order: Order | null; orders: Order[] }) {
+export function FreightMap({ order, orders, onSelectOrder }: { order: Order | null; orders: Order[]; onSelectOrder?: (orderId: string) => void }) {
   const pts = useMemo(() => {
     return order
       ? {
@@ -103,12 +104,31 @@ export function FreightMap({ order, orders }: { order: Order | null; orders: Ord
           );
         })}
 
-        {/* other-order pins shown muted */}
+        {/* Selectable order markers */}
         {orders
           .filter((o) => !order || o.id !== order.id)
           .map((o) => {
             const p = project(o.fromCoords.lat, o.fromCoords.lng);
-            return <circle key={o.id} cx={p.x} cy={p.y} r={4} fill="#475569" stroke="#0f172a" strokeWidth={1.5} />;
+            return (
+              <g
+                key={o.id}
+                role="button"
+                tabIndex={0}
+                aria-label={`${o.title}, ${o.from} do ${o.to}, ${formatCZK(o.price)}. Vybrat zakázku`}
+                onClick={() => onSelectOrder?.(o.id)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    onSelectOrder?.(o.id);
+                  }
+                }}
+                className="cursor-pointer"
+              >
+                <circle cx={p.x} cy={p.y} r={12} fill="#3b82f6" opacity={0.12} />
+                <circle cx={p.x} cy={p.y} r={6} fill="#60a5fa" stroke="#0f172a" strokeWidth={2} />
+                <title>{o.title} · {o.from} → {o.to} · {formatCZK(o.price)}</title>
+              </g>
+            );
           })}
 
         {/* active route */}
@@ -177,6 +197,15 @@ export function FreightMap({ order, orders }: { order: Order | null; orders: Ord
           <span className="text-ink-500">→</span>
           <span className="font-semibold text-ink-200">{order.to}</span>
           <span className="ml-2 text-ink-500">{order.distance} km</span>
+        </div>
+      )}
+      {order && (
+        <div className="absolute bottom-3 left-3 right-3 rounded-2xl border border-white/10 bg-ink-900/95 p-3 shadow-xl backdrop-blur sm:bottom-4 sm:left-4 sm:right-auto sm:w-72">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0"><p className="truncate text-xs font-bold text-white">{order.title}</p><p className="mt-1 flex items-center gap-1 text-[10px] text-ink-400">{order.from}<ArrowRight size={11} />{order.to}</p></div>
+            <span className="shrink-0 rounded-lg bg-success-500/10 px-2 py-1 text-xs font-bold text-success-300">{formatCZK(order.price)}</span>
+          </div>
+          <p className="mt-2 line-clamp-2 text-[10px] leading-4 text-ink-500">{order.description}</p>
         </div>
       )}
     </div>
