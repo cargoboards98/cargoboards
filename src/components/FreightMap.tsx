@@ -1,213 +1,135 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
+import { CircleMarker, MapContainer, Marker, Polyline, TileLayer, useMap } from 'react-leaflet';
+import { divIcon, latLngBounds } from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import type { Order } from '@/types';
-import { CITIES } from '@/data';
-import { project, MAP_W, MAP_H } from '@/lib/map';
-import { ArrowRight, MapPin } from 'lucide-react';
 import { formatCZK } from '@/lib/utils';
 
-const CITY_LIST = Object.values(CITIES);
+const REGION_BOUNDS = latLngBounds(
+  [49.18, 12.35],
+  [50.34, 14.72],
+);
 
-// Decorative road network: pairs of connected cities drawn faintly under the route.
-const ROADS: [string, string][] = [
-  ['Kdyně', 'Domažlice'],
-  ['Kdyně', 'Klatovy'],
-  ['Domažlice', 'Plzeň'],
-  ['Klatovy', 'Plzeň'],
-  ['Plzeň', 'Rokycany'],
-  ['Rokycany', 'Beroun'],
-  ['Beroun', 'Praha'],
-  ['Plzeň', 'Stod'],
-  ['Stod', 'Domažlice'],
-  ['Plzeň', 'Praha'],
-];
+function MapViewport({ order }: { order: Order | null }) {
+  const map = useMap();
 
-export function FreightMap({ order, orders, onSelectOrder }: { order: Order | null; orders: Order[]; onSelectOrder?: (orderId: string) => void }) {
-  const pts = useMemo(() => {
-    return order
-      ? {
-          a: project(order.fromCoords.lat, order.fromCoords.lng),
-          b: project(order.toCoords.lat, order.toCoords.lng),
-        }
-      : null;
-  }, [order]);
+  useEffect(() => {
+    const bounds = order
+      ? latLngBounds(
+          [order.fromCoords.lat, order.fromCoords.lng],
+          [order.toCoords.lat, order.toCoords.lng],
+        )
+      : REGION_BOUNDS;
 
-  // Active route via a gentle curved path (quadratic bezier through the midpoint, offset).
-  const routePath = useMemo(() => {
-    if (!pts) return '';
-    const { a, b } = pts;
-    const mx = (a.x + b.x) / 2;
-    const my = (a.y + b.y) / 2;
-    const dx = b.x - a.x;
-    const dy = b.y - a.y;
-    const len = Math.hypot(dx, dy) || 1;
-    const nx = -dy / len;
-    const ny = dx / len;
-    const bow = Math.min(60, len * 0.18);
-    const cx = mx + nx * bow;
-    const cy = my + ny * bow;
-    return `M ${a.x} ${a.y} Q ${cx} ${cy} ${b.x} ${b.y}`;
-  }, [pts]);
+    map.fitBounds(bounds, { padding: [44, 44], maxZoom: order ? 10 : 9, animate: true });
+  }, [map, order]);
+
+  return null;
+}
+
+export function FreightMap({
+  order,
+  orders,
+  onSelectOrder,
+}: {
+  order: Order | null;
+  orders: Order[];
+  onSelectOrder?: (orderId: string) => void;
+}) {
+  const route = useMemo(
+    () => order ? [
+      [order.fromCoords.lat, order.fromCoords.lng] as [number, number],
+      [order.toCoords.lat, order.toCoords.lng] as [number, number],
+    ] : [],
+    [order],
+  );
 
   return (
-    <div className="relative h-full w-full overflow-hidden rounded-2xl border border-ink-700/60 bg-ink-950">
-      <svg
-        viewBox={`0 0 ${MAP_W} ${MAP_H}`}
-        preserveAspectRatio="xMidYMid meet"
-        className="h-full w-full"
-        role="img"
-        aria-label="Mapa nákladní dopravy západních Čech"
+    <div className="relative h-full min-h-[280px] w-full overflow-hidden rounded-2xl border border-white/10 bg-[#151d2b] shadow-[0_20px_60px_rgba(0,0,0,0.28)]">
+      <MapContainer
+        center={[49.7, 13.55]}
+        zoom={8}
+        minZoom={6}
+        maxZoom={17}
+        scrollWheelZoom
+        zoomControl
+        className="cargoboard-map h-full w-full"
+        aria-label="Interaktivní mapa zakázek v západních Čechách"
       >
-        <defs>
-          <radialGradient id="bgGlow" cx="38%" cy="55%" r="70%">
-            <stop offset="0%" stopColor="#16243f" />
-            <stop offset="100%" stopColor="#0f172a" />
-          </radialGradient>
-          <linearGradient id="routeGrad" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#3b82f6" />
-            <stop offset="100%" stopColor="#22c55e" />
-          </linearGradient>
-          <filter id="soft" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="3" />
-          </filter>
-        </defs>
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+          maxZoom={19}
+        />
+        <MapViewport order={order} />
 
-        <rect x={0} y={0} width={MAP_W} height={MAP_H} fill="url(#bgGlow)" />
+        {orders.map((item) => {
+          const selected = item.id === order?.id;
+          const icon = selected
+            ? divIcon({
+                className: 'cargoboard-price-marker',
+                html: `<span class="cargoboard-price-marker__pill is-selected">${formatCZK(item.price)}</span>`,
+                iconSize: [96, 30],
+                iconAnchor: [48, 36],
+              })
+            : divIcon({
+                className: 'cargoboard-order-marker',
+                html: '<span class="cargoboard-order-dot"></span>',
+                iconSize: [20, 20],
+                iconAnchor: [10, 10],
+              });
 
-        {/* subtle lat/long grid */}
-        {Array.from({ length: 7 }).map((_, i) => {
-          const x = (MAP_W / 7) * (i + 0.5);
-          const y = (MAP_H / 6) * (i % 6);
           return (
-            <g key={i}>
-              <line x1={x} y1={0} x2={x} y2={MAP_H} stroke="#1e293b" strokeWidth={0.5} opacity={0.5} />
-              {y > 0 && <line x1={0} y1={y} x2={MAP_W} y2={y} stroke="#1e293b" strokeWidth={0.5} opacity={0.5} />}
-            </g>
-          );
-        })}
-
-        {/* faint road network */}
-        {ROADS.map(([c1, c2], i) => {
-          const a = project(CITIES[c1].lat, CITIES[c1].lng);
-          const b = project(CITIES[c2].lat, CITIES[c2].lng);
-          return (
-            <line
-              key={i}
-              x1={a.x}
-              y1={a.y}
-              x2={b.x}
-              y2={b.y}
-              stroke="#334155"
-              strokeWidth={1.4}
-              strokeDasharray="3 5"
-              opacity={0.55}
+            <Marker
+              key={item.id}
+              position={[item.fromCoords.lat, item.fromCoords.lng]}
+              icon={icon}
+              riseOnHover
+              eventHandlers={{ click: () => onSelectOrder?.(item.id) }}
+              title={`${item.title} · ${item.from} → ${item.to} · ${formatCZK(item.price)}`}
+              alt={`${item.title}, zakázka z ${item.from} do ${item.to}`}
             />
           );
         })}
 
-        {/* Selectable order markers */}
-        {orders
-          .filter((o) => !order || o.id !== order.id)
-          .map((o) => {
-            const p = project(o.fromCoords.lat, o.fromCoords.lng);
-            return (
-              <g
-                key={o.id}
-                role="button"
-                tabIndex={0}
-                aria-label={`${o.title}, ${o.from} do ${o.to}, ${formatCZK(o.price)}. Vybrat zakázku`}
-                onClick={() => onSelectOrder?.(o.id)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    onSelectOrder?.(o.id);
-                  }
-                }}
-                className="cursor-pointer"
-              >
-                <circle cx={p.x} cy={p.y} r={12} fill="#3b82f6" opacity={0.12} />
-                <circle cx={p.x} cy={p.y} r={6} fill="#60a5fa" stroke="#0f172a" strokeWidth={2} />
-                <title>{o.title} · {o.from} → {o.to} · {formatCZK(o.price)}</title>
-              </g>
-            );
-          })}
-
-        {/* active route */}
-        {pts && (
+        {order && (
           <>
-            <path d={routePath} fill="none" stroke="url(#routeGrad)" strokeWidth={7} strokeLinecap="round" opacity={0.35} filter="url(#soft)" />
-            <path d={routePath} fill="none" stroke="url(#routeGrad)" strokeWidth={3} strokeLinecap="round" />
-            <path
-              d={routePath}
-              fill="none"
-              stroke="#e2e8f0"
-              strokeWidth={2}
-              strokeLinecap="round"
-              strokeDasharray="2 22"
-              className="animate-dash-flow"
-              opacity={0.9}
+            <Polyline
+              positions={route}
+              pathOptions={{ color: '#60a5fa', weight: 8, opacity: 0.2, lineCap: 'round' }}
             />
-            {/* pulse rings */}
-            <circle cx={pts.a.x} cy={pts.a.y} r={10} fill="#3b82f6" className="origin-center animate-pulse-ring" style={{ transformBox: 'fill-box', transformOrigin: 'center' }} opacity={0.5} />
-            <circle cx={pts.b.x} cy={pts.b.y} r={10} fill="#22c55e" className="origin-center animate-pulse-ring" style={{ transformBox: 'fill-box', transformOrigin: 'center' }} opacity={0.5} />
+            <Polyline
+              positions={route}
+              pathOptions={{ color: '#60a5fa', weight: 3, opacity: 0.95, lineCap: 'round' }}
+            />
+            <CircleMarker
+              center={[order.fromCoords.lat, order.fromCoords.lng]}
+              radius={7}
+              pathOptions={{ color: '#dbeafe', weight: 3, fillColor: '#3b82f6', fillOpacity: 1 }}
+            >
+              <span className="sr-only">Nakládka: {order.from}</span>
+            </CircleMarker>
+            <CircleMarker
+              center={[order.toCoords.lat, order.toCoords.lng]}
+              radius={7}
+              pathOptions={{ color: '#dcfce7', weight: 3, fillColor: '#22c55e', fillOpacity: 1 }}
+            >
+              <span className="sr-only">Vyložení: {order.to}</span>
+            </CircleMarker>
           </>
         )}
+      </MapContainer>
 
-        {/* city nodes + labels */}
-        {CITY_LIST.map((c) => {
-          const p = project(c.lat, c.lng);
-          const isOrigin = order && order.from === c.name;
-          const isDest = order && order.to === c.name;
-          const active = isOrigin || isDest;
-          return (
-            <g key={c.name} className="transition-opacity">
-              <circle
-                cx={p.x}
-                cy={p.y}
-                r={active ? 7 : 4}
-                fill={isOrigin ? '#3b82f6' : isDest ? '#22c55e' : '#64748b'}
-                stroke="#0f172a"
-                strokeWidth={2}
-              />
-              <text
-                x={p.x}
-                y={p.y - (active ? 14 : 10)}
-                textAnchor="middle"
-                fontSize={active ? 15 : 11}
-                fontWeight={active ? 700 : 500}
-                fill={active ? '#e2e8f0' : '#94a3b8'}
-                className="select-none"
-              >
-                {c.name}
-              </text>
-            </g>
-          );
-        })}
-      </svg>
+      <div className="pointer-events-none absolute left-3 top-3 z-[500] flex items-center gap-2 rounded-full border border-white/10 bg-[#101827]/90 px-3 py-2 text-[10px] font-medium text-slate-200 shadow-lg backdrop-blur-md sm:left-4 sm:top-4 sm:text-xs">
+        <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.75)]" />
+        {order
+          ? <><span className="font-semibold">{order.from}</span><span className="text-slate-500">→</span><span className="font-semibold">{order.to}</span><span className="ml-1 text-slate-400">{order.distance} km</span></>
+          : <span>Zakázky v západních Čechách</span>}
+      </div>
 
-      {!order && (
-        <div className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-ink-900/80 px-4 py-2 text-xs text-ink-400 ring-1 ring-ink-700/60 backdrop-blur">
-          Vyberte zakázku pro zobrazení trasy
-        </div>
-      )}
-
-      {order && (
-        <div className="pointer-events-none absolute left-4 top-4 flex items-center gap-2 rounded-xl bg-ink-900/85 px-3 py-2 text-xs ring-1 ring-ink-700/60 backdrop-blur animate-fade-in">
-          <MapPin size={14} className="text-accent-400" />
-          <span className="font-semibold text-ink-200">{order.from}</span>
-          <span className="text-ink-500">→</span>
-          <span className="font-semibold text-ink-200">{order.to}</span>
-          <span className="ml-2 text-ink-500">{order.distance} km</span>
-        </div>
-      )}
-      {order && (
-        <div className="absolute bottom-3 left-3 right-3 rounded-2xl border border-white/10 bg-ink-900/95 p-3 shadow-xl backdrop-blur sm:bottom-4 sm:left-4 sm:right-auto sm:w-72">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0"><p className="truncate text-xs font-bold text-white">{order.title}</p><p className="mt-1 flex items-center gap-1 text-[10px] text-ink-400">{order.from}<ArrowRight size={11} />{order.to}</p></div>
-            <span className="shrink-0 rounded-lg bg-success-500/10 px-2 py-1 text-xs font-bold text-success-300">{formatCZK(order.price)}</span>
-          </div>
-          <p className="mt-2 line-clamp-2 text-[10px] leading-4 text-ink-500">{order.description}</p>
-        </div>
-      )}
+      <div className="pointer-events-none absolute bottom-3 left-3 z-[500] rounded-lg border border-white/10 bg-[#101827]/85 px-2.5 py-1.5 text-[9px] text-slate-400 shadow-lg backdrop-blur-md sm:bottom-4 sm:left-4 sm:text-[10px]">
+        Podržte a přetáhněte · kolečkem přibližte
+      </div>
     </div>
   );
 }
